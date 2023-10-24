@@ -1,0 +1,46 @@
+{
+  "localISD": 1,
+  "localAS": "ff0000000001",
+  "interfaces": [
+    { "interface": 5, "portId": 136 },
+    { "interface": 6, "portId": 10 },
+    { "interface": 6, "portId": 144, "comment": "Used when part of a path segment is used, i.e. a hop field to forward traffic from an upstream AS but is used to send traffic from the local AS" },
+    { "interface": 0, "portId": 144 },
+    { "interface": 0, "portId": 6, "comment": "Used for recirculation of packets" },
+    { "interface": 6, "portId": 4, "comment": "Needed if AS is child and receives packets that were forwarded to CPU" }
+  ],
+  "externalInterfaces": [
+    { "interface": 5, "portId": 136 },
+    { "interface": 6, "portId": 10 }
+  ],
+  "externalAccelerators":[
+    { "portId": 4, "dstMAC": "00:00:00:00:00:00", "srcMAC": "00:00:00:00:00:00" }
+  ],
+  "localBorderRouters": [
+    { "dl": 0, "dt": 0, "host": "10.2.1.2", "egressPortId": 144, "dstMAC": "02:00:00:01:01:01", "dstPort": 31002},
+    { "dl": 0, "dt": 0, "host": "10.2.1.3", "egressPortId": 144, "dstMAC": "02:00:00:01:01:04", "dstPort": 31004},
+    { "dl": 0, "dt": 0, "host": "10.2.1.4", "egressPortId": 144, "dstMAC": "02:00:00:01:01:03", "dstPort": 31006},
+  ],
+  "localDestinations": [
+    { "dl": 0, "dt": 0, "host": "10.2.1.2", "netmask": "255.255.255.0", "egressPortId": 144, "dstMAC": "02:00:00:01:01:01", "dstPort": 30041}
+  ],
+  "localDestinationsService": [
+    { "dl": 0, "dt": 1, "host": 65536, "egressPortId": 144, "dstIP": "10.2.1.2", "dstMAC": "02:00:00:01:01:01", "dstPort": 30041},
+    { "dl": 0, "dt": 1, "host": 131072, "egressPortId": 144, "dstIP": "10.2.1.2", "dstMAC": "02:00:00:01:01:01", "dstPort": 30041},
+    { "dl": 0, "dt": 0, "host": 2130706433, "egressPortId": 144, "dstIP": "10.2.1.2", "dstMAC": "02:00:00:01:01:01", "dstPort": 30041}
+  ],
+  "forwardLocal": [
+    { "egressInterface": 3, "egressPortId": 144, "dstIP": "10.2.1.2", "dstMAC": "02:00:00:01:01:01", "dstPort": 30041 }
+  ],
+  "forwardRemote": [
+    { "egressInterface": 5, "egressPortId": 136, "dstIP": "10.1.4.2", "dstMAC": "e2:d4:b8:f2:80:1a", "dstPort": 50000, "dstISD": 1, "dstAS": "ff0000000006" },
+    { "egressInterface": 6, "egressPortId": 10, "dstIP": "10.1.5.2", "dstMAC": "02:00:00:04:00:01", "dstPort": 50000, "dstISD": 1, "dstAS": "ff0000000007" }
+  ],
+  "localSource": [
+    { "egressPortId": 136, "srcIP": "10.1.4.1", "srcMAC": "be:8f:c8:86:b3:4d", "srcPort": 50000},
+    { "egressPortId": 10, "srcIP": "10.1.5.1", "srcMAC": "02:00:00:01:00:04", "srcPort": 50000},
+    { "egressPortId": 144, "srcIP": "10.2.1.5", "srcMAC": "02:00:00:01:01:04", "srcPort": 31008},
+    { "egressPortId": 6, "srcIP": "0.0.0.0", "srcMAC": "00:00:00:00:00:00", "srcPort": 0},
+    { "egressPortId": 4, "srcIP": "0.0.0.0", "srcMAC": "00:00:00:00:00:00", "srcPort": 0}
+  ]
+}

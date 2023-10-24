@@ -1,0 +1,7 @@
+p4-no-cmac.tar.gz filter=lfs diff=lfs merge=lfs -text
+pipe-recirc.tar.gz filter=lfs diff=lfs merge=lfs -text
+sidn-p4.tar.gz filter=lfs diff=lfs merge=lfs -text
+loop-cable.tar.gz filter=lfs diff=lfs merge=lfs -text
+osr.tar.gz filter=lfs diff=lfs merge=lfs -text
+p4-cmac-1pipe.tar.gz filter=lfs diff=lfs merge=lfs -text
+p4-cmac-2pipes.tar.gz filter=lfs diff=lfs merge=lfs -text

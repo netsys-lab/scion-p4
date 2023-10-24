@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Up to 16 applications (0-15)
+apps:
+    0:
+        enabled: true                # Enable the application
+        packet: ptf-tests/scion_packet.bin # Path to file containing packet data
+        pktgen_port:             6   # Pktgen port to use (0-7 of each pipe)
+        timer_nanosec:           0   # Delay after trigger
+        batch_count:             1   # Number of batches (up to 2^16)
+        packets_per_batch:      10   # Packets per batch (up to 2^16)
+        ibg:                     0   # Inter-batch gap (ns)
+        ibg_jitter:              0   # Inter-batch gap jitter (ns)
+        ipg:         !!float 0.5e9   # Inter-packet gap (ns)
+        ipg_jitter:              0   # Inter-packet gap jitter (ns)
+        eg_port_group:           0   # Device egress ports (references eg_port_groups)
+
+# Port groups
+eg_port_groups:
+    0: [1]  # Port 1 of each pipe is a default loopback port on Tofino 2

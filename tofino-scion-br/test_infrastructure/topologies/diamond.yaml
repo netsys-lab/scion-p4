@@ -1,0 +1,18 @@
+--- # Diamond-shaped topology.
+ASes:
+  "1-ff00:0:1":
+    core: true
+    voting: true
+    authoritative: true
+    issuing: true
+  "1-ff00:0:2":
+    cert_issuer: 1-ff00:0:1
+  "1-ff00:0:3":
+    cert_issuer: 1-ff00:0:1
+  "1-ff00:0:4":
+    cert_issuer: 1-ff00:0:1
+links:
+  - {a: "1-ff00:0:1", b: "1-ff00:0:2", linkAtoB: CHILD, mtu: 1280}
+  - {a: "1-ff00:0:1", b: "1-ff00:0:3", linkAtoB: CHILD, mtu: 1280}
+  - {a: "1-ff00:0:2", b: "1-ff00:0:4", linkAtoB: CHILD, mtu: 1280}
+  - {a: "1-ff00:0:3", b: "1-ff00:0:4", linkAtoB: CHILD, mtu: 1280}

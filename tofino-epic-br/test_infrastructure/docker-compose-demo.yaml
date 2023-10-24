@@ -1,0 +1,171 @@
+version: '3.6'
+
+services:
+  as1br1:
+    image: scion_host:latest
+    container_name: as1br1
+    environment:
+      - SUPERVISOR_PROCESS_GROUP=as1-ff00_0_1_BR1
+    volumes:
+      - ${SCION_ROOT:?}/bin:/home/scion/scion/bin:ro
+      - ${SCION_APPS:?}/bin:/home/scion/scion-apps/bin:ro
+      - ${SCION_ROOT:?}/gen:/home/scion/scion/gen:ro
+      - ${SCION_ROOT:?}/gen-cache:/home/scion/scion/gen-cache
+      - ${SCION_ROOT:?}/gen-certs:/home/scion/scion/gen-certs
+      - ${SCION_ROOT:?}/logs:/home/scion/scion/logs
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+   # networks:
+     # as1_int:
+       # ipv4_address: 10.2.1.2
+  as1br2:
+    image: scion_host:latest
+    container_name: as1br2
+    environment:
+      - SUPERVISOR_PROCESS_GROUP=as1-ff00_0_1_BR2
+    volumes:
+      - ${SCION_ROOT:?}/bin:/home/scion/scion/bin:ro
+      - ${SCION_APPS:?}/bin:/home/scion/scion-apps/bin:ro
+      - ${SCION_ROOT:?}/gen:/home/scion/scion/gen:ro
+      - ${SCION_ROOT:?}/gen-cache:/home/scion/scion/gen-cache
+      - ${SCION_ROOT:?}/gen-certs:/home/scion/scion/gen-certs
+      - ${SCION_ROOT:?}/logs:/home/scion/scion/logs
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+   # networks:
+     # as1_int:
+       # ipv4_address: 10.2.1.3
+  as1br3:
+    image: scion_host:latest
+    container_name: as1br3
+    environment:
+      - SUPERVISOR_PROCESS_GROUP=as1-ff00_0_1_BR3
+    volumes:
+      - ${SCION_ROOT:?}/bin:/home/scion/scion/bin:ro
+      - ${SCION_APPS:?}/bin:/home/scion/scion-apps/bin:ro
+      - ${SCION_ROOT:?}/gen:/home/scion/scion/gen:ro
+      - ${SCION_ROOT:?}/gen-cache:/home/scion/scion/gen-cache
+      - ${SCION_ROOT:?}/gen-certs:/home/scion/scion/gen-certs
+      - ${SCION_ROOT:?}/logs:/home/scion/scion/logs
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+   # networks:
+     # as1_int:
+       # ipv4_address: 10.2.1.4
+  as1br4:
+    image: scion_host:latest
+    container_name: as1br4
+    environment:
+      - SUPERVISOR_PROCESS_GROUP=as1-ff00_0_1_BR4
+    volumes:
+      - ${SCION_ROOT:?}/bin:/home/scion/scion/bin:ro
+      - ${SCION_APPS:?}/bin:/home/scion/scion-apps/bin:ro
+      - ${SCION_ROOT:?}/gen:/home/scion/scion/gen:ro
+      - ${SCION_ROOT:?}/gen-cache:/home/scion/scion/gen-cache
+      - ${SCION_ROOT:?}/gen-certs:/home/scion/scion/gen-certs
+      - ${SCION_ROOT:?}/logs:/home/scion/scion/logs
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+   # networks:
+     # as1_int:
+       # ipv4_address: 10.2.1.5
+  as2:
+    image: scion_host:latest
+    container_name: as2
+    environment:
+      - SUPERVISOR_PROCESS_GROUP=as1-ff00_0_2
+    volumes:
+      - ${SCION_ROOT:?}/bin:/home/scion/scion/bin:ro
+      - ${SCION_APPS:?}/bin:/home/scion/scion-apps/bin:ro
+      - ${SCION_ROOT:?}/gen:/home/scion/scion/gen:ro
+      - ${SCION_ROOT:?}/gen-cache:/home/scion/scion/gen-cache
+      - ${SCION_ROOT:?}/gen-certs:/home/scion/scion/gen-certs
+      - ${SCION_ROOT:?}/logs:/home/scion/scion/logs
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+  as3:
+    image: scion_host:latest
+    container_name: as3
+    environment:
+      - SUPERVISOR_PROCESS_GROUP=as1-ff00_0_3
+    volumes:
+      - ${SCION_ROOT:?}/bin:/home/scion/scion/bin:ro
+      - ${SCION_APPS:?}/bin:/home/scion/scion-apps/bin:ro
+      - ${SCION_ROOT:?}/gen:/home/scion/scion/gen:ro
+      - ${SCION_ROOT:?}/gen-cache:/home/scion/scion/gen-cache
+      - ${SCION_ROOT:?}/gen-certs:/home/scion/scion/gen-certs
+      - ${SCION_ROOT:?}/logs:/home/scion/scion/logs
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+  as4:
+    image: scion_host:latest
+    container_name: as4
+    environment:
+      - SUPERVISOR_PROCESS_GROUP=as1-ff00_0_4
+    volumes:
+      - ${SCION_ROOT:?}/bin:/home/scion/scion/bin:ro
+      - ${SCION_APPS:?}/bin:/home/scion/scion-apps/bin:ro
+      - ${SCION_ROOT:?}/gen:/home/scion/scion/gen:ro
+      - ${SCION_ROOT:?}/gen-cache:/home/scion/scion/gen-cache
+      - ${SCION_ROOT:?}/gen-certs:/home/scion/scion/gen-certs
+      - ${SCION_ROOT:?}/logs:/home/scion/scion/logs
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+  as5:
+    image: scion_host:latest
+    container_name: as5
+    environment:
+      - SUPERVISOR_PROCESS_GROUP=as1-ff00_0_5
+    volumes:
+      - ${SCION_ROOT:?}/bin:/home/scion/scion/bin:ro
+      - ${SCION_APPS:?}/bin:/home/scion/scion-apps/bin:ro
+      - ${SCION_ROOT:?}/gen:/home/scion/scion/gen:ro
+      - ${SCION_ROOT:?}/gen-cache:/home/scion/scion/gen-cache
+      - ${SCION_ROOT:?}/gen-certs:/home/scion/scion/gen-certs
+      - ${SCION_ROOT:?}/logs:/home/scion/scion/logs
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+  as6:
+    image: scion_host:latest
+    container_name: as6
+    environment:
+      - SUPERVISOR_PROCESS_GROUP=as1-ff00_0_6
+    volumes:
+      - ${SCION_ROOT:?}/bin:/home/scion/scion/bin:ro
+      - ${SCION_APPS:?}/bin:/home/scion/scion-apps/bin:ro
+      - ${SCION_ROOT:?}/gen:/home/scion/scion/gen:ro
+      - ${SCION_ROOT:?}/gen-cache:/home/scion/scion/gen-cache
+      - ${SCION_ROOT:?}/gen-certs:/home/scion/scion/gen-certs
+      - ${SCION_ROOT:?}/logs:/home/scion/scion/logs
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+  as7:
+    image: scion_host:latest
+    container_name: as7
+    environment:
+      - SUPERVISOR_PROCESS_GROUP=as1-ff00_0_7
+    volumes:
+      - ${SCION_ROOT:?}/bin:/home/scion/scion/bin:ro
+      - ${SCION_APPS:?}/bin:/home/scion/scion-apps/bin:ro
+      - ${SCION_ROOT:?}/gen:/home/scion/scion/gen:ro
+      - ${SCION_ROOT:?}/gen-cache:/home/scion/scion/gen-cache
+      - ${SCION_ROOT:?}/gen-certs:/home/scion/scion/gen-certs
+      - ${SCION_ROOT:?}/logs:/home/scion/scion/logs
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+#networks:
+#  as1_int:
+#    name: as1_int
+#    ipam:
+#      config:
+#        - subnet: 10.2.1.0/24

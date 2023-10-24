@@ -1,0 +1,52 @@
+apps:
+    0:
+        enabled: true
+        packet: evaluation/scion_2seg_800byte.bin
+        pktgen_port:           256
+        timer_nanosec:           0
+        batch_count:         10000
+        packets_per_batch:   10000
+        ibg:                     0
+        ibg_jitter:              0
+        ipg:                     0
+        ipg_jitter:              0
+        eg_port_group:           0
+    1:
+        enabled: true
+        packet: evaluation/scion_2seg_800byte.bin
+        pktgen_port:           258
+        timer_nanosec:           0
+        batch_count:         10000
+        packets_per_batch:   10000
+        ibg:                     0
+        ibg_jitter:              0
+        ipg:                     0
+        ipg_jitter:              0
+        eg_port_group:           0
+    2:
+        enabled: true
+        packet: evaluation/scion_2seg_800byte.bin
+        pktgen_port:           260
+        timer_nanosec:           0
+        batch_count:         10000
+        packets_per_batch:   10000
+        ibg:                     0
+        ibg_jitter:              0
+        ipg:                     0
+        ipg_jitter:              0
+        eg_port_group:           0
+    3:
+        enabled: true
+        packet: evaluation/scion_2seg_800byte.bin
+        pktgen_port:           262
+        timer_nanosec:           0
+        batch_count:         10000
+        packets_per_batch:   10000
+        ibg:                     0
+        ibg_jitter:              0
+        ipg:                     0
+        ipg_jitter:              0
+        eg_port_group:           0
+
+eg_port_groups:
+    0: [264, 272, 280, 288, 296, 304, 312, 320]

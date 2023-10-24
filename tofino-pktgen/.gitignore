@@ -1,0 +1,11 @@
+__pycache__
+build/
+pktgen/
+bfrt_grpc
+bf_drivers*
+*.log
+ptf.pcap
+zlog-cfg-cur
+/*.json
+evaluation/plot/*.png
+evaluation/plot/*.pdf

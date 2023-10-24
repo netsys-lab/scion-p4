@@ -1,0 +1,16 @@
+apps:
+    0:
+        enabled: true
+        packet: evaluation/scion_1seg_192byte.bin
+        pktgen_port:           384
+        timer_nanosec:           0
+        batch_count:         10000
+        packets_per_batch:   10000
+        ibg:                     0
+        ibg_jitter:              0
+        ipg:                     0
+        ipg_jitter:              0
+        eg_port_group:           0
+
+eg_port_groups:
+    0: [392]

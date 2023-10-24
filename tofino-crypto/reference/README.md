@@ -1,0 +1,10 @@
+AES encryption and CMAC in C
+============================
+
+### Build
+```bash
+mkdir build
+cd build
+cmake -DCMAKE_BUILD_TYPE=Release ..
+make
+```

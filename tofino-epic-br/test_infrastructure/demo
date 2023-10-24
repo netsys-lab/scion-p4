@@ -1,0 +1,237 @@
+#!/bin/bash
+
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+DOCKER_IMAGE=scion_host:latest
+COMPOSE_ARGS="-f docker-compose-demo.yaml -p int-demo"
+export SCION_ROOT=${HOME}/scion
+export SCION_APPS=${HOME}/scion-apps
+USABLE_SWITCHES=(int_switch l2_switch_grpc)
+
+. helper.bash
+
+##############
+## Commands ##
+##############
+
+cmd_build() {
+    # Build docker image
+    docker build --build-arg SCION_UID=$(id -u $LOGNAME) --build-arg SCION_GID=$(id -g $LOGNAME) \
+    -t ${DOCKER_IMAGE} ./scion_host
+}
+
+cmd_run() {
+    if [[ "$(docker images -q ${DOCKER_IMAGE} 2> /dev/null)" == "" ]]; then
+        cmd_build
+    fi
+
+    set -e
+    sudo -v
+    mkdir -p log
+
+    # Create local topology
+    local SCRIPT_DIR=$PWD
+    pushd $SCION_ROOT
+    ./scion.sh bazel_remote
+    ./scion.sh topology -c $SCRIPT_DIR/topologies/star.yaml
+    popd
+
+    rm -f $SCION_ROOT/gen/links_established
+
+    # Rewrite AS ff00:0:1 internal network IPs
+    set_control_addr 1-ff00:0:1 10.2.1.2:31000
+    set_br_internal_addr 1-ff00:0:1 br1-ff00_0_1-1 10.2.1.2:31002
+    set_br_internal_addr 1-ff00:0:1 br1-ff00_0_1-2 10.2.1.3:31004
+    set_br_internal_addr 1-ff00:0:1 br1-ff00_0_1-3 10.2.1.4:31006
+    set_br_internal_addr 1-ff00:0:1 br1-ff00_0_1-4 10.2.1.5:31008
+    
+    # Rewrite BR interface IDs
+    set_br_interface 1-ff00:0:1 1-ff00:0:3 1
+    set_br_interface 1-ff00:0:1 1-ff00:0:4 2
+    set_br_interface 1-ff00:0:1 1-ff00:0:2 3
+    set_br_interface 1-ff00:0:1 1-ff00:0:5 4
+    set_br_interface 1-ff00:0:1 1-ff00:0:6 5
+    set_br_interface 1-ff00:0:1 1-ff00:0:7 6
+
+    # Rewrite BR interface IPs
+    set_link_underlay 1-ff00:0:1 10.1.0.1:50000 1-ff00:0:2 10.1.0.2:50000
+    set_link_underlay 1-ff00:0:1 10.1.1.1:50000 1-ff00:0:3 10.1.1.2:50000
+    set_link_underlay 1-ff00:0:1 10.1.2.1:50000 1-ff00:0:4 10.1.2.2:50000
+    set_link_underlay 1-ff00:0:1 10.1.3.1:50000 1-ff00:0:5 10.1.3.2:50000
+    set_link_underlay 1-ff00:0:1 10.1.4.1:50000 1-ff00:0:6 10.1.4.2:50000
+    set_link_underlay 1-ff00:0:1 10.1.5.1:50000 1-ff00:0:7 10.1.5.2:50000
+    
+    # Set hop field registration server address
+    #set_scion_hop_field_registration_address ASff00_0_1 0.0.0.0:10000 cs1-ff00_0_1-1
+
+    # For convenience: Set scion daemon address to default value
+    for i in {1..7}
+    do
+        set_scion_daemon_address ASff00_0_$i 127.0.0.1:30255
+    done
+
+    # Split ASff00:0:1 into four program groups
+    #[group:as1-ff00_0_1_BR2]
+    #programs = br1-ff00_0_1-2,sd1-ff00_0_1
+    
+    #/^\[program:br1-ff00_0_1-2]/
+    #.,+1d
+    #.,+1d
+    #.,+1d
+    #.,+1d
+    #.,+1d
+    ed ${SCION_ROOT}/gen/supervisord.conf << EOF
+/^\[program:br1-ff00_0_1-2]/
+.,+1d
+.,+1d
+.,+1d
+.,+1d
+.,+1d
+
+/^\[group:as1-ff00_0_1]/
+.,+1d
+i
+[group:as1-ff00_0_1_BR1]
+programs = br1-ff00_0_1-1,cs1-ff00_0_1-1,sd1-ff00_0_1
+
+[group:as1-ff00_0_1_BR3]
+programs = br1-ff00_0_1-3,sd1-ff00_0_1
+
+[group:as1-ff00_0_1_BR4]
+programs = br1-ff00_0_1-4,sd1-ff00_0_1
+.
+w
+q
+EOF
+
+    # Run topology using docker-compose
+    rm -f $SCION_ROOT/logs/*
+    docker-compose $COMPOSE_ARGS up -d
+
+    # Create links between ASes
+    for i in {1,3,4}
+    do
+        mount_netns as1br$i
+    done
+    for i in {2..7}
+    do
+        mount_netns as$i
+    done
+    
+    # Link 1: AS1 to AS2
+    create_veth_ns_ip veths1 as1br1 10.1.0.1/24 veths3 as2 10.1.0.2/24
+    force_chksum_update as1br1 veths1
+    force_chksum_update as2 veths3
+    
+    # Link 2: Tofino to AS3
+    create_veth_global_ns_mac_one_ip veths5 02:00:00:01:00:03 veths4 as3 02:00:00:03:00:01 10.1.1.2/24
+    force_chksum_update as3 veths4
+    
+    # Link 3: Tofino to AS4
+    create_veth_global_ns_mac_one_ip veths9 02:00:00:01:00:04 veths8 as4 02:00:00:04:00:01 10.1.2.2/24
+    force_chksum_update as4 veths8
+    
+    # Tofino to accelerator
+    create_veth_mac tofAccel1 02:00:00:01:02:21 accel1 02:00:00:01:21:02
+    create_veth_mac tofAccel2 02:00:00:01:02:22 accel2 02:00:00:01:22:02
+    create_veth_mac tofAccel3 02:00:00:01:02:23 accel3 02:00:00:01:23:02
+    
+    # AS1-internal links
+    create_veth_global_ns_one_mac_one_ip br1bridge br1intern as1br1 02:00:00:01:01:01 10.2.1.2/24
+    create_veth_one_mac br2bridge br2tof 02:00:00:01:01:02
+    create_veth_global_ns_one_mac_one_ip br3bridge br3intern as1br3 02:00:00:01:01:03 10.2.1.4/24
+    create_veth_global_ns_one_mac_one_ip br4bridge br4intern as1br4 02:00:00:01:01:04 10.2.1.5/24
+    
+    # Use OpenVSwitch with default routing algorithm to connect the AS internally
+    sudo ovs-vsctl add-br as1bridge
+    sudo ovs-vsctl add-port as1bridge br1bridge -- set Interface br1bridge ofport_request=1
+    sudo ovs-vsctl add-port as1bridge br2bridge -- set Interface br2bridge ofport_request=2
+    sudo ovs-vsctl add-port as1bridge br3bridge -- set Interface br3bridge ofport_request=3
+    sudo ovs-vsctl add-port as1bridge br4bridge -- set Interface br3bridge ofport_request=4
+    sudo ovs-ofctl mod-port as1bridge br1bridge up
+    sudo ovs-ofctl mod-port as1bridge br2bridge up
+    sudo ovs-ofctl mod-port as1bridge br3bridge up
+    sudo ovs-ofctl mod-port as1bridge br4bridge up
+    
+    # GRPC connection - needed for initial SIDN Labs code
+    #create_veth_global_ns_ip grpc_end 10.0.50.5/24 grpc_start as1br1 10.0.50.10/24
+    
+    # Link 4: AS1 to AS5
+    create_veth_ns_ip veths13 as1br3 10.1.3.1/24 veths15 as5 10.1.3.2/24
+    force_chksum_update as1br3 veths13
+    force_chksum_update as5 veths15
+
+    # Link 5: AS1 to AS6
+    create_veth_ns_ip veths17 as1br4 10.1.4.1/24 veths19 as6 10.1.4.2/24
+    force_chksum_update as1br4 veths17
+    force_chksum_update as6 veths19
+
+    # Link 6: AS1 to AS7
+    create_veth_ns_ip veths21 as1br4 10.1.5.1/24 veths23 as7 10.1.5.2/24
+    force_chksum_update as1br4 veths21
+    force_chksum_update as7 veths23
+    
+
+    # Define ARPs for ASes connected to Tofino
+    sudo ip netns exec as3 arp -s 10.1.1.1 02:00:00:01:00:03
+    sudo ip netns exec as4 arp -s 10.1.2.1 02:00:00:01:00:04
+    sudo ip netns exec as1br1 arp -s 10.2.1.3 02:00:00:01:01:02
+    sudo ip netns exec as1br3 arp -s 10.2.1.3 02:00:00:01:01:02
+    sudo ip netns exec as1br4 arp -s 10.2.1.3 02:00:00:01:01:02
+
+
+    # Signal containers to start SCION
+    echo '1' > $SCION_ROOT/gen/links_established
+    echo "Infrastructure was set up successfully."
+}
+
+cmd_stop() {
+    # Stop simple_switch and controller
+    sudo pkill --full '^simple_switch_grpc'
+
+    # Delete Docker containers and networks
+    docker-compose $COMPOSE_ARGS down
+
+    # Delete links between ASes
+    for i in {1,3,4}
+    do
+        umount_netns as1br$i
+    done
+    for i in {2..7}
+    do
+        umount_netns as$i
+    done
+    
+    delete_veth tofAccel1
+    delete_veth tofAccel2
+    delete_veth tofAccel3
+    
+    sudo ovs-vsctl del-br as1bridge
+    sudo ip link delete br2tof
+}
+
+cmd_logs() {
+    docker-compose logs
+}
+
+cmd_enter() {
+    docker exec -it $1 bash -l
+}
+
+cmd_clean() {
+    rm -rf ./log
+    rm -rf $SCION_ROOT/gen* $SCION_ROOT/logs $SCION_ROOT/traces
+}
+
+#################
+## Entry point ##
+#################
+
+COMMAND=$1
+shift
+
+case "$COMMAND" in
+    build|run|stop|logs|enter|clean|help)
+        "cmd_$COMMAND" "$@" ;;
+    *) echo "Command no recognized."; exit 1 ;;
+esac

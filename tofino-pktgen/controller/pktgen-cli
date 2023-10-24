@@ -1,0 +1,258 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+import argparse
+import datetime
+import json
+import os
+import time
+from typing import Iterable
+
+import bfrt_grpc.client as gc
+import numpy as np
+import yaml
+from controller.pktgen import StatelessTrafficGenerator
+
+
+class PktGenError(Exception):
+    pass
+
+
+def connect_grpc(grpc_addr: str, client_id: Iterable[int], device_id: int = 0) -> gc.ClientInterface:
+    """Connext to switchd gRPC server.
+    """
+    # Connect to server
+    for id in client_id:
+        try:
+            interface = gc.ClientInterface(
+                grpc_addr = grpc_addr,
+                client_id = id,
+                device_id = device_id,
+                num_tries = 1
+            )
+            print("Connected to BF Runtime Server as client", id)
+            break
+        except:
+            raise PktGenError("Could not connect to BF Runtime server")
+
+    # Get info about running program
+    bfrt_info = interface.bfrt_info_get()
+    p4_name = bfrt_info.p4_name_get()
+    print("Data plane:", p4_name)
+    if id == 0:
+        interface.bind_pipeline_config(p4_name)
+
+    return interface
+
+
+def run(interface, pipe, config, hist_bits, hist_shift, read_lat_reg = False, repeat=1):
+    """Configure and run traffic generator.
+    """
+
+    PKTGEN_HDR_LEN = 6 # length of the pktgen header for timer events
+    FCS_LEN = 4        # frame check sequence (part of the 64 byte minimal frame size)
+    L1_OVERHEAD = 20   # Ethernet preamble + start-of-frame + average inter-frame gap
+    PORT_SPEED = 100e9 # bit/s pktgen port speed
+
+    calc_duration = 0
+    calc_tx_pkts = 0
+    calc_tx_bytes = 0
+
+    for app_id, app in config["apps"].items():
+        if not app["enabled"]:
+            continue
+
+        tx_packets = int(float(app["batch_count"]) * float(app["packets_per_batch"]))
+
+        frame_size = os.stat(app["packet"]).st_size + FCS_LEN
+        tx_bytes = tx_packets * frame_size
+
+        # Time per frame
+        frame_time = 8 * (frame_size + L1_OVERHEAD) / PORT_SPEED # in seconds
+        frame_time = frame_time + 1e-9 * float(app["ipg"]) # inter-packet gap
+
+        # Calculate (approximate) overall traffic duration from the longest running pktgen application
+        app_dur = app["batch_count"] * (app["packets_per_batch"] * frame_time + float(app["ibg"]))
+        app_dur += 1e-9 * float(app["timer_nanosec"]) # delay before starting
+        calc_duration = max(calc_duration, app_dur) # in seconds
+
+        print("App {}: {:>4} bytes/frame, {:6.4} ns/frame, {:8.6} Mpkt/s, {:8.6} Mbit/s".format(
+            app_id,
+            frame_size,
+            1e9 * frame_time,
+            1e-6 * tx_packets / app_dur,
+            8e-6 * tx_bytes / app_dur))
+
+        calc_tx_pkts += tx_packets
+        calc_tx_bytes += tx_bytes
+
+    if calc_tx_pkts == 0:
+        return None
+
+    controller = StatelessTrafficGenerator(
+        interface, pipe=pipe, hist_bits=hist_bits, hist_shift=hist_shift)
+
+    print("Program tables")
+    controller.program_tables(config)
+
+    try:
+        result = []
+        for i in range(repeat):
+            if i > 0:
+                print("Reset experiment")
+                controller.trigger(False)
+                controller.reset_timestamps()
+                controller.reset_histogram()
+
+            print("Pass {}".format(i))
+            print("Send packets ({:.4} s)".format(calc_duration))
+            tx_bytes0, tx_pkts0 = controller.get_tx_counters()
+            controller.trigger()
+            time.sleep(calc_duration + 1) # wait some extra time for control plane overhead
+
+            print("Read results")
+            # TX counters
+            tx_bytes1, tx_pkts1 = controller.get_tx_counters()
+            # counters are 64 bit each, no risk of wraparound
+            total_tx_pkts = tx_pkts1 - tx_pkts0
+            total_gen_bytes = tx_bytes1 - tx_bytes0
+            total_tx_bytes = total_gen_bytes - (total_tx_pkts * PKTGEN_HDR_LEN)
+
+            # TX, RX timestamps
+            (tx_first, tx_last), (rx_first, rx_last) = controller.get_timestamps()
+            if tx_first < 0 or tx_last < 0 or rx_first < 0 or rx_last < 0:
+                raise PktGenError("ERROR: Got invalid timestamps from dataplane")
+            tx_timedelta    = 1e-9 * float((tx_last - tx_first) % 2**48)
+            rx_timedelta    = 1e-9 * float((rx_last - rx_first) % 2**48)
+            first_timedelta = 1e-9 * float((rx_first - tx_first) % 2**48)
+            last_timedelta  = 1e-9 * float((rx_last - tx_last) % 2**48)
+            total_time      = 1e-9 * float((rx_last - tx_first) % 2**48)
+
+            # Histogram
+            hist_bins, hist_bytes, hist_packets = controller.get_histogram()
+            ovfl_bytes, ovfl_pkts = controller.get_hist_overflow()
+            total_rx_bytes = sum(hist_bytes) + ovfl_bytes
+            total_rx_pkts = sum(hist_packets) + ovfl_pkts
+            hist_bins_array = np.array(hist_bins)
+            bin_mids = 0.5 * (hist_bins_array[:-1] + hist_bins_array[1:])
+            try:
+                hist_avg = np.average(bin_mids, weights=hist_packets[:-1])
+            except ZeroDivisionError:
+                hist_avg = np.nan
+
+            # Latency trace
+            latency = None
+            lat_mean = None
+            lat_stddev = None
+            if read_lat_reg:
+                latency = np.array(controller.get_latency())
+                lat_mean = np.mean(latency[latency > 0])
+                lat_stddev = np.std(latency[latency > 0])
+
+            print("=== Result ===")
+            print("Generated: {} of {} packets ({} bytes)".format(total_tx_pkts, calc_tx_pkts, total_gen_bytes))
+            print("Received : {} of {} packets".format(int(total_rx_pkts), total_tx_pkts))
+            print("Loss rate: {:.4} %".format(100.0 - 100.0 * min(1.0, total_rx_pkts / total_tx_pkts)))
+            print("TX duration: {:.6} ms".format(1e3 * tx_timedelta))
+            print("RX duration: {:.6} ms".format(1e3 * rx_timedelta))
+            print("Total time : {:.6} ms".format(1e3 * total_time))
+            print("First packet delay: {:.6} µs".format(1e6 * first_timedelta))
+            print("Last packet delay : {:.6} µs".format(1e6 * last_timedelta))
+            print("Latency (approx.) : {:.6} µs".format(1e6 * hist_avg))
+            print("High latency pkts.: {}".format(ovfl_pkts))
+            if read_lat_reg:
+                print("Average recorded latency: {:.6} µs".format(1e6 * lat_mean))
+                print("Latency std. deviation  : {:.6} µs".format(1e6 * lat_stddev))
+            print("TX packet rate: {:.6} pkt/s". format(total_tx_pkts / tx_timedelta))
+            print("RX packet rate: {:.6} pkt/s". format(total_rx_pkts / rx_timedelta))
+            print("Attempted bandwidth: {:.6} Gbit/s".format(8e-9 * total_tx_bytes / tx_timedelta))
+            print("Achieved bandwidth : {:.6} Gbit/s".format(8e-9 * total_rx_bytes / rx_timedelta))
+            print("==============")
+
+            result.append({
+                "version"        : 2,
+                "timestamp"      : datetime.datetime.now().astimezone().isoformat(),
+                "calc_tx_pkts"   : calc_tx_pkts,
+                "calc_tx_bytes"  : calc_tx_bytes,
+                "calc_duration"  : calc_duration,
+                "total_time"     : total_time,
+                "total_gen_bytes": total_gen_bytes,
+                "total_tx_pkts"  : int(total_tx_pkts),
+                "total_tx_bytes" : int(total_tx_bytes),
+                "total_rx_pkts"  : int(total_rx_pkts),
+                "total_rx_bytes" : int(total_rx_bytes),
+                "tx_first"       : tx_first,
+                "tx_last"        : tx_last,
+                "rx_first"       : rx_first,
+                "rx_last"        : rx_last,
+                "hist_ovfl_bytes": ovfl_bytes,
+                "hist_ovfl_pkts" : ovfl_pkts,
+                "hist_bins"      : hist_bins,
+                "hist_bytes"     : hist_bytes,
+                "hist_packets"   : hist_packets,
+                "hist_avg"       : hist_avg,
+                "latency_trace"  : {
+                    "mean"  : lat_mean,
+                    "stddev": lat_stddev,
+                    "values": latency,
+                }
+            })
+
+        return result
+
+    finally:
+        print("Clear tables")
+        controller.program_tables(config, cleanup=True)
+
+
+def main():
+    args = parse_args()
+
+    with open(args.config, "rt") as file:
+        config = dict(yaml.safe_load(file))
+
+    interface = connect_grpc(args.grpc_addr, args.client_id)
+    if args.clear:
+        interface.clear_all_tables()
+
+    results = run(interface, args.pipe, config,
+        hist_bits=args.hist_bits, hist_shift=args.hist_shift,
+        read_lat_reg=args.lat_out is not None,
+        repeat=args.repeat)
+
+    if args.lat_out is not None:
+        lat = np.concatenate([rep["latency_trace"]["values"] for rep in results])
+        np.save(args.lat_out, lat)
+    if args.out is not None:
+        with open(args.out, "wt") as file:
+            for res in results:
+                del res["latency_trace"]["values"]
+            json.dump(results, file, indent=2)
+
+def parse_args():
+    parser = argparse.ArgumentParser(prog="pktgen-cli",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument("config", type=str, help="Path to configuration file")
+    parser.add_argument("--grpc_addr", type=str, default="localhost:50052",
+        help="Address of the GRPC server")
+    parser.add_argument("--client_id", type=lambda x: range(x, x+1), default=range(10),
+        help="Client ID, will try to find an unused ID if not specified")
+    parser.add_argument("--pipe", type=int, default=0,
+        help="Pipe to use for generating packets")
+    parser.add_argument("--clear", action="store_true",
+        help="Clear all tables before doing anything else")
+    parser.add_argument("--repeat", type=int, default=1,
+        help="How many times to repeat the measurements")
+    parser.add_argument("--hist-bits", type=int, default=8,
+        help="2**hist_bits is the number of histogram bins (max 10 bit)")
+    parser.add_argument("--hist-shift", type=int, default=6,
+        help="Defines the size of the bins in powers of two")
+    parser.add_argument("--out", default=None, metavar="FILE",
+        help="Save report in JSON format to FILE")
+    parser.add_argument("--lat-out", default=None, metavar="FILE",
+        help="Save captured packet latencies as Numpy binary file to FILE")
+    return parser.parse_args()
+
+
+if __name__ == "__main__":
+    main()

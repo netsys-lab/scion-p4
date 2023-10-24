@@ -1,0 +1,23 @@
+Prepare the border router by commenting out the HF expiration check in
+go/pkg/router/dataplane.go:879 validateHopExpiry()
+
+Dry run using veths:
+
+./setup_veths.sh
+scion/bin/posix-router --config config_2seg/br.toml
+
+Source:
+sudo ip netns exec source scapy_scion.py
+# Copy header definitions from evaluation/ts_header.py and evaluation/gen_packets.py
+pkt = create_2seg_packet(200)
+del pkt[Ether].dst
+del pkt[Ether].src
+sendp(pkt, iface="veth1")
+
+Destination:
+sudo ip netns exec dest scapy_scion.py
+sniff(iface="veth3", prn=lambda x: x.summary())
+
+Delete veths:
+sudo ip netns delete source
+sudo ip netns delete dest

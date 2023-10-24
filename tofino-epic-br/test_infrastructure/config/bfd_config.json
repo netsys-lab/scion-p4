@@ -1,0 +1,18 @@
+{
+  "localISD": 1,
+  "localAS": "ff0000000001",
+  "localDestinations": [
+    { "egressInterface": 0, "egressPortId": 3, "dstIP": "10.2.1.2", "dstMAC": "02:00:00:01:01:01", "dstPort": 31002},
+    { "egressInterface": 0, "egressPortId": 3, "dstIP": "10.2.1.4", "dstMAC": "02:00:00:01:01:03", "dstPort": 31006},
+    { "egressInterface": 0, "egressPortId": 3, "dstIP": "10.2.1.5", "dstMAC": "02:00:00:01:01:04", "dstPort": 31008}
+  ],
+  "remoteDestinations": [
+    { "egressInterface": 1, "egressPortId": 1, "dstIP": "10.1.1.2", "dstMAC": "02:00:00:03:00:01", "dstPort": 50000, "dstISD": 1, "dstAS": "ff0000000003" },
+    { "egressInterface": 2, "egressPortId": 2, "dstIP": "10.1.2.2", "dstMAC": "02:00:00:04:00:01", "dstPort": 50000, "dstISD": 1, "dstAS": "ff0000000004" }
+  ],
+  "localSource": [
+    { "egressPortId": 1, "srcIP": "10.1.1.1", "srcMAC": "02:00:00:01:00:03", "srcPort": 50000},
+    { "egressPortId": 2, "srcIP": "10.1.2.1", "srcMAC": "02:00:00:01:00:04", "srcPort": 50000},
+    { "egressPortId": 3, "srcIP": "10.2.1.3", "srcMAC": "02:00:00:01:01:02", "srcPort": 31004}
+  ]
+}

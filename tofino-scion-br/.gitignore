@@ -1,0 +1,7 @@
+*.cpp.o
+*.cpp.d
+*.pyc
+.vagrant
+build
+docs
+log
