@@ -151,7 +151,7 @@ def plot_bars(data, path_type: str, bar_width: float=0.2):
             gbps = [] # gigabit per second
             for res in exp_res:
                 rx_timedelta = 1e-9 * float((res["rx_last"] - res["rx_first"]) % 2**48)
-                mpps.append(8e-6 * res["total_rx_pkts"] / rx_timedelta)
+                mpps.append(1e-6 * res["total_rx_pkts"] / rx_timedelta)
                 gbps.append(8e-9 * res["total_rx_bytes"] / rx_timedelta)
             mpps = np.array(mpps)
             gbps = np.array(gbps)
@@ -174,16 +174,16 @@ def plot_bars(data, path_type: str, bar_width: float=0.2):
                 label=EXP_LABELS[exp], **EXP_STYLE[exp])
             for pos, value in zip(x + offset, y):
                 if value < 10:
-                    label = np.round(value, decimals=1)
+                    label = np.round(value, decimals=2)
                 else:
-                    label = int(np.round(value, decimals=0))
+                    label = int(np.round(value, decimals=1))
                 ax.text(pos, value, str(label), ha="center", va="bottom")
             offset += bar_width
         except KeyError:
             pass
     ax.set_xticks(x + 0.5 * (offset - bar_width), PKT_SIZES)
     ax.set_xlabel("Packet size [bytes]")
-    ax.set_ylabel("Packet rate [10e6 packets per second]")
+    ax.set_ylabel("Packet rate [$10^6$ packets per second]")
     ax.legend()
 
     # Plot bandwidth
@@ -280,14 +280,12 @@ def main():
 
     pkts, bw = plot_bars(data, "1seg")
     pkts.axes[0].set_title("Packet Throughput (1 Segment)")
-    pkts.axes[0].set_ylim(top=2000)
     bw.axes[0].set_title("Bandwidth (1 Segment)")
     pkts.savefig(dir / f"pkts_1seg.{fmt}", bbox_inches="tight")
     bw.savefig(dir / f"bw_1seg.{fmt}", bbox_inches="tight")
 
     pkts, bw = plot_bars(data, "2seg")
     pkts.axes[0].set_title("Packet Throughput (2 Segments)")
-    pkts.axes[0].set_ylim(top=2000)
     bw.axes[0].set_title("Bandwidth (2 Segments)")
     pkts.savefig(dir / f"pkts_2seg.{fmt}", bbox_inches="tight")
     bw.savefig(dir / f"bw_2seg.{fmt}", bbox_inches="tight")
