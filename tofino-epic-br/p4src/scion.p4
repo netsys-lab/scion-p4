@@ -991,6 +991,65 @@ control ScionIngressControl(
         default_action = NoAction;
     }
     
+    // Insert key into bridge header
+    action insert_bridge_key(bit<32> key1, bit<32> key2, bit<32> key3, bit<32> key4) {
+        hdr.bridge.key.key0 = key1;
+        hdr.bridge.key.key1 = key2;
+        hdr.bridge.key.key2 = key3;
+        hdr.bridge.key.key3 = key4;
+    }
+
+    table tbl_bridge_key {
+        key = {
+            hdr.scion_common.version: exact;
+        }
+        actions = {
+            drop;
+            insert_bridge_key;
+        }
+        size = 64;
+        default_action = drop;
+    }
+
+    // XOR first hop field with subkey
+    action bridge_subkey_hop1(bit<16> key1, bit<16> key2, bit<32> key3, bit<8> key4, bit<8> key5, bit<16> key6, bit<16> key7, bit<16> key8) {
+        hdr.bridge.hop_field_1.bridge_fields.rsv = hdr.bridge.hop_field_1.bridge_fields.rsv ^ key1;
+        hdr.bridge.hop_field_1.bridge_fields.beta = hdr.bridge.hop_field_1.bridge_fields.beta ^ key2;
+        hdr.bridge.hop_field_1.bridge_fields.timestamp = hdr.bridge.hop_field_1.bridge_fields.timestamp ^ key3;
+        hdr.bridge.hop_field_1.hop_field.routerAlerts = hdr.bridge.hop_field_1.hop_field.routerAlerts ^ key4;
+        hdr.bridge.hop_field_1.hop_field.expTime = hdr.bridge.hop_field_1.hop_field.expTime ^ key5;
+        hdr.bridge.hop_field_1.hop_field.inIf = hdr.bridge.hop_field_1.hop_field.inIf ^ key6;
+        hdr.bridge.hop_field_1.hop_field.egIf = hdr.bridge.hop_field_1.hop_field.egIf ^ key7;
+        hdr.bridge.hop_field_1.hop_field.reserved = hdr.bridge.hop_field_1.hop_field.reserved ^ key8;
+    }
+
+    // XOR second hop field with subkey
+    action bridge_subkey_hop2(bit<16> key1, bit<16> key2, bit<32> key3, bit<8> key4, bit<8> key5, bit<16> key6, bit<16> key7, bit<16> key8) {
+        bridge_subkey_hop1(key1, key2, key3, key4, key5, key6, key7, key8);
+        hdr.bridge.hop_field_2.bridge_fields.rsv = hdr.bridge.hop_field_2.bridge_fields.rsv ^ key1;
+        hdr.bridge.hop_field_2.bridge_fields.beta = hdr.bridge.hop_field_2.bridge_fields.beta ^ key2;
+        hdr.bridge.hop_field_2.bridge_fields.timestamp = hdr.bridge.hop_field_2.bridge_fields.timestamp ^ key3;
+        hdr.bridge.hop_field_2.hop_field.routerAlerts = hdr.bridge.hop_field_2.hop_field.routerAlerts ^ key4;
+        hdr.bridge.hop_field_2.hop_field.expTime = hdr.bridge.hop_field_2.hop_field.expTime ^ key5;
+        hdr.bridge.hop_field_2.hop_field.inIf = hdr.bridge.hop_field_2.hop_field.inIf ^ key6;
+        hdr.bridge.hop_field_2.hop_field.egIf = hdr.bridge.hop_field_2.hop_field.egIf ^ key7;
+        hdr.bridge.hop_field_2.hop_field.reserved = hdr.bridge.hop_field_2.hop_field.reserved ^ key8;
+    }
+
+    // Check whether one or two hop fields have to be XORed
+    table tbl_bridge_subkey {
+        key = {
+            meta.recirculation: exact;
+        }
+        actions = {
+            drop;
+            bridge_subkey_hop1;
+            bridge_subkey_hop2;
+        }
+        size = 2;
+        default_action = drop;
+    }
+    
     // Create the first bridge hop field
     action create_bridge_hop_1(scion_info_field_t info_field, scion_hop_field_t scion_hop_field) {
         hdr.bridge.hop_field_1.bridge_fields.rsv = 0;
@@ -1364,10 +1423,7 @@ control ScionIngressControl(
                     hdr.bridge.main.setValid();
                     hdr.bridge.key.setValid();
 
-                    hdr.bridge.key.key0 = 0x3e43e44f;
-                    hdr.bridge.key.key1 = 0x8aa310c1;
-                    hdr.bridge.key.key2 = 0x678289a3;
-                    hdr.bridge.key.key3 = 0x1e7e2f69;
+                    tbl_bridge_key.apply();
 
                     hdr.bridge.hop_field_1.bridge_fields.setValid();
                     hdr.bridge.hop_field_1.hop_field.setValid();
@@ -1557,31 +1613,8 @@ control ScionIngressControl(
                 
                 if(hdr.bridge.hop_field_1.bridge_fields.isValid())
                 {
-                    hdr.bridge.hop_field_1.bridge_fields.rsv = hdr.bridge.hop_field_1.bridge_fields.rsv ^ 0xcb6b;
-                    hdr.bridge.hop_field_1.bridge_fields.beta = hdr.bridge.hop_field_1.bridge_fields.beta ^ 0x04f1;
-                    hdr.bridge.hop_field_1.bridge_fields.timestamp = hdr.bridge.hop_field_1.bridge_fields.timestamp ^ 0x6e141891;
+                    tbl_bridge_subkey.apply();
                 }
-                if(hdr.bridge.hop_field_1.hop_field.isValid()) {
-                    hdr.bridge.hop_field_1.hop_field.routerAlerts = hdr.bridge.hop_field_1.hop_field.routerAlerts ^ 0x16;
-                    hdr.bridge.hop_field_1.hop_field.expTime = hdr.bridge.hop_field_1.hop_field.expTime ^ 0x01;
-                    hdr.bridge.hop_field_1.hop_field.inIf = hdr.bridge.hop_field_1.hop_field.inIf ^ 0xa76d;
-                    hdr.bridge.hop_field_1.hop_field.egIf = hdr.bridge.hop_field_1.hop_field.egIf ^ 0xa767;
-                    hdr.bridge.hop_field_1.hop_field.reserved = hdr.bridge.hop_field_1.hop_field.reserved ^ 0x464d;
-                }
-                if(hdr.bridge.hop_field_2.bridge_fields.isValid())
-                {
-                    hdr.bridge.hop_field_2.bridge_fields.rsv = hdr.bridge.hop_field_2.bridge_fields.rsv ^ 0xcb6b;
-                    hdr.bridge.hop_field_2.bridge_fields.beta = hdr.bridge.hop_field_2.bridge_fields.beta ^ 0x04f1;
-                    hdr.bridge.hop_field_2.bridge_fields.timestamp = hdr.bridge.hop_field_2.bridge_fields.timestamp ^ 0x6e141891;
-                }
-                if(hdr.bridge.hop_field_2.hop_field.isValid()) {
-                    hdr.bridge.hop_field_2.hop_field.routerAlerts = hdr.bridge.hop_field_2.hop_field.routerAlerts ^ 0x16;
-                    hdr.bridge.hop_field_2.hop_field.expTime = hdr.bridge.hop_field_2.hop_field.expTime ^ 0x01;
-                    hdr.bridge.hop_field_2.hop_field.inIf = hdr.bridge.hop_field_2.hop_field.inIf ^ 0xa76d;
-                    hdr.bridge.hop_field_2.hop_field.egIf = hdr.bridge.hop_field_2.hop_field.egIf ^ 0xa767;
-                    hdr.bridge.hop_field_2.hop_field.reserved = hdr.bridge.hop_field_2.hop_field.reserved ^ 0x464d;
-                }
-
                 // Set the source IP/MAC addresses and UDP source port based on the chosen egress port
                 // When configuring make sure the destination and source IP type match, otherwise this will overwrite previous selection of IPv4/IPv6
                 tbl_set_local_source.apply();

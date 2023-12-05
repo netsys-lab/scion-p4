@@ -54,17 +54,6 @@ We provide a unified control plane program (Recommended):
 PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python sudo -E python3 controller/controller.py [--grpc_address <tofino_grpc_address>] -k <scion_key.key> -c <switch_config.json> -i <tofino_interface>
 ```
 
-Instead, it is also possible to run two control plane programs one after another (not recommended, but for debugging helpful). To initialize the data plane tables run:
-
-```
-python3 controller/load_config.py <switch_config.json> 
-```
-
-To start the BFD processing which is necessary to communicate with other SCION border routers:
-
-```
-sudo -E python3 controller/bfd_handling.py -b <bfd_config.json> -k <scion_key.key> -i <tofino_interface>
-```
 where `scion_key.key` is the master0.key SCION key file and `tofino_interface` is the name of the interface to which the Tofino forwards the BFD packets.
 
 ### Deployment with the AES P4 implementation

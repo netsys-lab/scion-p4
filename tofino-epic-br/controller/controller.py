@@ -5,7 +5,6 @@ import importlib.util
 
 import argparse
 import base64
-import binascii
 import logging
 import json
 import yaml
@@ -23,7 +22,7 @@ pktgen_spec.loader.exec_module(pktgen_lib)
 sys.path.append(os.path.abspath(__file__ + '/../../../' + 'tofino-crypto'))
 
 from bfd_handling import BfdHandler
-from scion_crypto import get_key
+from scion_crypto import get_key, get_subkey_1
 from load_config import load_configuration
 from aes_2pipes.controller.aes import AesFirstPipe, AesSecondPipe
 from aes_1pipe.controller.aes import  AesPipe
@@ -112,7 +111,7 @@ def run_pktgen(interface, pipe, config, hist_bits, hist_shift, read_lat_reg = Fa
             print("Send packets ({:.4} s)".format(calc_duration))
             tx_bytes0, tx_pkts0 = controller.get_tx_counters()
             controller.trigger()
-            time.sleep(calc_duration + 1) # wait some extra time for control plane overhead
+            time.sleep(calc_duration + 10) # wait some extra time for control plane overhead
 
             print("Read results")
             # TX counters
@@ -283,6 +282,8 @@ def main():
     master0_file = open(args.key_file, 'r')
     master0 = master0_file.read()
     key = get_key(master0)
+    key_int = int.from_bytes(key, byteorder='big')
+    subkey = get_subkey_1(key)
     
     # Get Tofino interface
     interface = Interface()
@@ -311,9 +312,9 @@ def main():
     #tofino_if.clear_all_tables()
     tofino_if.bind_pipeline_config("scion")
     if args.aes_pipes:
-        load_configuration(args.config[0], tofino_if, dev_tgt, "scion", [int(args.aes_pipes[0])], [int(args.aes_pipes[1])])
+        load_configuration(args.config[0], tofino_if, dev_tgt, "scion", key_int, subkey, [int(args.aes_pipes[0])], [int(args.aes_pipes[1])])
     else:
-        load_configuration(args.config[0], tofino_if, dev_tgt, "scion")
+        load_configuration(args.config[0], tofino_if, dev_tgt, "scion", key_int, subkey)
 
     # Start BFD handler
     bfdHandler = BfdHandler(args.config[0], key, args.interface, test, tofino_if, dev_tgt)

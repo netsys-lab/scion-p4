@@ -33,6 +33,7 @@ from Cryptodome.Cipher import AES
 from Cryptodome.Hash import SHA256, CMAC
 
 import base64
+import binascii
 import struct
 
 # Be aware of consDir when providing input for MAC!
@@ -43,8 +44,19 @@ def get_key(master0):
   password = base64.b64decode(master0)
   return PBKDF2(password, salt, 16, count=1000, hmac_hash_module=SHA256)
 
+def get_subkey_1(key):
+    iv = binascii.unhexlify("00000000000000000000000000000000")
+    cipher = AES.new(key, AES.MODE_CBC, iv=iv)
+    ciphertext = int.from_bytes(cipher.encrypt(iv), byteorder='big')
+    if 0 == ciphertext & 0x80000000000000000000000000000000:
+        key1 = (ciphertext << 1) & 0xffffffffffffffffffffffffffffffff
+    else:
+        key1 = ((ciphertext << 1) ^ 0x00000000000000000000000000000087) & 0xffffffffffffffffffffffffffffffff
+    return key1
+
 def compute_mac(key, segID, timestamp, exp, ingress, egress):
   cmac = CMAC.new(key, ciphermod=AES)
   mac_input = struct.pack('>2xHIxcHH2x', segID, timestamp, bytes([exp]), ingress, egress)
   cmac.update(mac_input)
   return cmac
+

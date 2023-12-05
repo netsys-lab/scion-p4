@@ -94,6 +94,77 @@ class TblIngressInterface(Tbl):
         return self.tbl.entry_add(self.dev_tgt, [key], [data])
 
 
+class TblBridgeKey(Tbl):
+    def __init__(self, dev_tgt, bfrt_info):
+        super(TblBridgeKey,
+              self).__init__(dev_tgt, bfrt_info,
+                             "ScionIngressControl.tbl_bridge_key")
+
+    def make_key(self, version):
+        return self.tbl.make_key([
+            gc.KeyTuple('hdr.scion_common.version', version),
+        ])
+
+    def make_data_insert_bridge_key(self, key):
+        return self.tbl.make_data([
+            gc.DataTuple('key1', key >> 96),
+            gc.DataTuple('key2', (key >> 64) & 0xffffffff),
+            gc.DataTuple('key3', (key >> 32) & 0xffffffff),
+            gc.DataTuple('key4', key & 0xffffffff),
+        ], "insert_bridge_key")
+
+    def entry_add_insert_bridge_key(self, version, aeskey):
+        key = self.make_key(version)
+        data = self.make_data_insert_bridge_key(aeskey)
+        return self.tbl.entry_add(self.dev_tgt, [key], [data])
+
+
+class TblBridgeSubkey(Tbl):
+    def __init__(self, dev_tgt, bfrt_info):
+        super(TblBridgeSubkey,
+              self).__init__(dev_tgt, bfrt_info,
+                             "ScionIngressControl.tbl_bridge_subkey")
+
+    def make_key(self, recirc):
+        return self.tbl.make_key([
+            gc.KeyTuple('meta.recirculation', recirc),
+        ])
+
+    def make_data_bridge_subkey_hop1(self, key):
+        return self.tbl.make_data([
+            gc.DataTuple('key1', key >> 112),
+            gc.DataTuple('key2', (key >> 96) & 0xffff),
+            gc.DataTuple('key3', (key >> 64) & 0xffffffff),
+            gc.DataTuple('key4', (key >> 56) & 0xff),
+            gc.DataTuple('key5', (key >> 48) & 0xff),
+            gc.DataTuple('key6', (key >> 32) & 0xffff),
+            gc.DataTuple('key7', (key >> 16) & 0xffff),
+            gc.DataTuple('key8', key & 0xffff),
+        ], "bridge_subkey_hop1")
+
+    def make_data_bridge_subkey_hop2(self, key):
+        return self.tbl.make_data([
+            gc.DataTuple('key1', key >> 112),
+            gc.DataTuple('key2', (key >> 96) & 0xffff),
+            gc.DataTuple('key3', (key >> 64) & 0xffffffff),
+            gc.DataTuple('key4', (key >> 56) & 0xff),
+            gc.DataTuple('key5', (key >> 48) & 0xff),
+            gc.DataTuple('key6', (key >> 32) & 0xffff),
+            gc.DataTuple('key7', (key >> 16) & 0xffff),
+            gc.DataTuple('key8', key & 0xffff),
+        ], "bridge_subkey_hop2")
+
+    def entry_add_bridge_subkey_hop1(self, recirc, subkey):
+        key = self.make_key(recirc)
+        data = self.make_data_bridge_subkey_hop1(subkey)
+        return self.tbl.entry_add(self.dev_tgt, [key], [data])
+
+    def entry_add_bridge_subkey_hop2(self, recirc, subkey):
+        key = self.make_key(recirc)
+        data = self.make_data_bridge_subkey_hop2(subkey)
+        return self.tbl.entry_add(self.dev_tgt, [key], [data])
+
+
 class TblAcceleratorLag(Tbl):
     def __init__(self, dev_tgt, bfrt_info):
         super(TblAcceleratorLag,

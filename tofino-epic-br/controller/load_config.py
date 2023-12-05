@@ -60,7 +60,7 @@ def _make_port(pipe: int, port: int) -> int:
     return (pipe << 7) | port
 
 # Load config to Tofino
-def load_configuration(config_file, interface, dev_tgt, p4_name, br_pipes=[0,1,2,3], aes_pipes=[]):
+def load_configuration(config_file, interface, dev_tgt, p4_name, key, subkey, br_pipes=[0,1,2,3], aes_pipes=[]):
     configJSON = open(config_file)
     config = json.load(configJSON)
 
@@ -92,6 +92,17 @@ def load_configuration(config_file, interface, dev_tgt, p4_name, br_pipes=[0,1,2
         tbl_ingress_interface.entry_add_set_ingress_interface(
             e['interface'], e['portId'])
     
+    # Init tables for key insertion into bridge header
+    tbl_bridge_key = TblBridgeKey(dev_tgt, bfrt_info)
+    tbl_bridge_subkey = TblBridgeSubkey(dev_tgt, bfrt_info)
+    tbl_bridge_key.clear()
+    tbl_bridge_subkey.clear()
+
+    logger.info("Adding keys")
+    tbl_bridge_key.entry_add_insert_bridge_key(0, key)
+    tbl_bridge_subkey.entry_add_bridge_subkey_hop1(0, subkey)
+    tbl_bridge_subkey.entry_add_bridge_subkey_hop2(1, subkey)
+
     # Init LAG tables for external accelerator selection
     tbl_accelerator_lag = TblAcceleratorLag(dev_tgt, bfrt_info)
     tbl_accelerator_lag_sel = TblAcceleratorLagSel(dev_tgt, bfrt_info)
@@ -230,43 +241,3 @@ def load_configuration(config_file, interface, dev_tgt, p4_name, br_pipes=[0,1,2
         except ValueError:
             logger.info("Invalid address: %s", e['srcIP'])
 
-def main():
-    parser = argparse.ArgumentParser(description="Load configuration on the Tofino switch for the SCION implementation")
-    parser.add_argument(
-        "config_file",
-        default="switch_config.json",
-        nargs="?",
-        help="Location of the configuration file (default: switch_config.json)")
-    parser.add_argument(
-        "--grpc_address",
-        default="localhost:50052",
-        nargs="?",
-        help="GRPC address of the Tofino switch (default: localhost:50052)")
-    parser.add_argument(
-        "--program_name",
-        "-p",
-        default="scion",
-        nargs="?",
-        help="P4 program name (default: scion)")
-    parser.add_argument(
-        "-d",
-        "--debug",
-        action="store_true",
-        help="Enable output of debug info")
-    args = parser.parse_args()
-
-    if args.debug:
-        logger.setLevel(logging.DEBUG)
-
-    # Get Tofino interface
-    interface = Interface()
-    tofino_if = interface.get_if()
-    dev_tgt = interface.get_dev_tgt()
-
-    try:
-        load_configuration(args.config_file, tofino_if, dev_tgt, args.program_name)
-    finally:
-        interface.tear_down_stream()
-
-if __name__ == '__main__':
-    main()
