@@ -1368,10 +1368,11 @@ control ScionIngressControl(
             if (hdr.scion_common.pathType != PathType.EMPTY) {
                 meta.seg1Len = hdr.scion_path_meta.seg1Len;
             }
+#ifndef DISABLE_IPV4
             if (hdr.ipv4.isValid()) {
                 meta.payload_len = hdr.ipv4.totalLen - 20;
             }
-
+#endif /* DISABLE_IPV4 */
             if(hdr.scion_common.pathType == PathType.SCION || hdr.scion_common.pathType == PathType.EPIC) {
                 // Update metadata fields based on the currently selected info field
                 if (hdr.scion_path_meta.currInf == 0) {
@@ -1589,8 +1590,10 @@ control ScionIngressControl(
                     }
                 } else {
                     switch(tbl_forward.apply().action_run) {
+#ifndef DISABLE_IPV4
                         forward_local_ipv4:
                         {}
+#endif /* DISABLE_IPV4 */
                         default: {
                             if (hdr.scion_path_meta.currInf == 0 || hdr.scion_common.pathType == PathType.ONEHOP) {
                                 hdr.scion_info_field_0.segId = meta.nextSegId;
