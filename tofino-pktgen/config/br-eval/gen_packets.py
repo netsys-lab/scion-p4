@@ -10,7 +10,7 @@ from scapy.layers.inet import IP, UDP, Ether
 from scapy.packet import Raw
 from scapy_scion.layers.scion import SCION, HopField, InfoField, SCIONPath
 
-# Run as 'python3 evaluation/gen_packets.py' from repo root
+# Run as 'python3 config/br-eval/gen_packets.py' from repo root
 
 def derive_hf_mac_key(key: str) -> str:
     kdf = PBKDF2HMAC(
@@ -26,7 +26,7 @@ PKT_SIZES = [192, 800, 1500]
 KEY = derive_hf_mac_key("VqoTW140sYOCgR+09I4EuA==")
 
 
-def create_1seg_packet(size: int) -> bytes:
+def create_1seg_packet(size: int):
     """SCION packet 1 info field, 3 hop fields, down-segment
     """
     pkt = Ether(dst="10:70:fd:1c:c1:fc", src="d6:a9:96:c4:0f:9e")
@@ -53,7 +53,7 @@ def create_1seg_packet(size: int) -> bytes:
     return pkt
 
 
-def create_2seg_packet(size: int) -> bytes:
+def create_2seg_packet(size: int):
     """SCION packet 2 info field, 4 hop fields, up- and down-segment
     """
     pkt = Ether(dst="10:70:fd:1c:c1:fc", src="d6:a9:96:c4:0f:9e")
@@ -86,8 +86,8 @@ def create_2seg_packet(size: int) -> bytes:
 
 if __name__ == "__main__":
     for size in PKT_SIZES:
-        with open(f"evaluation/scion_1seg_{size}byte.bin", "bw") as file:
+        with open(f"config/br-eval/scion_1seg_{size}byte.bin", "bw") as file:
             file.write(bytes(create_1seg_packet(size)))
     for size in PKT_SIZES:
-        with open(f"evaluation/scion_2seg_{size}byte.bin", "bw") as file:
+        with open(f"config/br-eval/scion_2seg_{size}byte.bin", "bw") as file:
             file.write(bytes(create_2seg_packet(size)))

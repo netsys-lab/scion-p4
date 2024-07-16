@@ -210,6 +210,10 @@ def main():
 
     with open(args.config, "rt") as file:
         config = dict(yaml.safe_load(file))
+    if args.packet is not None:
+        print(f"Overriding packet contents with {args.packet}")
+        for app in config["apps"].values():
+            app["packet"] = args.packet
 
     interface = connect_grpc(args.grpc_addr, args.client_id)
     if args.clear:
@@ -247,6 +251,8 @@ def parse_args():
         help="2**hist_bits is the number of histogram bins (max 10 bit)")
     parser.add_argument("--hist-shift", type=int, default=6,
         help="Defines the size of the bins in powers of two")
+    parser.add_argument("--packet", type=str, default=None,
+        help="Override the packet file used by all apps with the given path")
     parser.add_argument("--out", default=None, metavar="FILE",
         help="Save report in JSON format to FILE")
     parser.add_argument("--lat-out", default=None, metavar="FILE",
