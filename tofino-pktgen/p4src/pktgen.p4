@@ -79,7 +79,7 @@ enum bit<8> sc_proto_t {
     END_TO_END_EXT = 201,
     SCMP           = 202,
     BFD            = 203,
-    EXPERIMENT1    = 253,
+    IDINT          = 253, // EXPERIMENT1
     EXPERIMENT2    = 254
 }
 
@@ -177,6 +177,25 @@ header sc_epic_h {
     bit<32> counter;
     bit<32> phvf;
     bit<32> lhvf;
+}
+
+////////////
+// ID-INT //
+////////////
+
+// ID-INT main header
+header idint_h {
+    bit<8> ver_flags;
+    bit<8> mode_verifier;
+    bit<8> length;
+    bit<8> next_hdr;
+    bit<64> instructions;
+    bit<64> timestamp;
+    // no verifier address (assert Vrf != 0)
+}
+
+header idint_stack_h {
+    varbit<(32*32)> stack;
 }
 
 /////////////////
@@ -494,6 +513,8 @@ struct ingress_headers_t {
     ipv6_h                ipv6;
     udp_h                 outer_udp;
     sc_headers_t          scion;
+    idint_h               idint;
+    idint_stack_h         telemetry_stack;
     udp_h                 inner_udp;
     timestamp_h           timestamp;
 }
@@ -578,8 +599,18 @@ parser IgParser(packet_in            pkt,
     state scion {
         scion_parser.apply(pkt, hdr.scion, outer_udp_chksum);
         transition select (hdr.scion.common.next_hdr) {
-            sc_proto_t.UDP : inner_udp;
-            default        : accept;
+            sc_proto_t.IDINT : idint;
+            sc_proto_t.UDP   : inner_udp;
+            default          : accept;
+        }
+    }
+
+    state idint {
+        pkt.extract(hdr.idint);
+        pkt.extract(hdr.telemetry_stack, (bit<32>)hdr.idint.length * 32);
+        transition select (hdr.idint.next_hdr) {
+            sc_proto_t.UDP   : inner_udp;
+            default          : accept;
         }
     }
 
@@ -628,6 +659,8 @@ control IgDeparser(packet_out                       pkt,
         pkt.emit(hdr.ipv6);
         pkt.emit(hdr.outer_udp);
         pkt.emit(hdr.scion);
+        pkt.emit(hdr.idint);
+        pkt.emit(hdr.telemetry_stack);
         pkt.emit(hdr.inner_udp);
         pkt.emit(hdr.timestamp);
     }
@@ -787,13 +820,15 @@ control Ingress(
 /** Headers **/
 
 struct egress_headers_t {
-    ethernet_h   ethernet;
-    ipv4_h       ipv4;
-    ipv6_h       ipv6;
-    udp_h        outer_udp;
-    sc_headers_t scion;
-    udp_h        inner_udp;
-    timestamp_h  timestamp;
+    ethernet_h    ethernet;
+    ipv4_h        ipv4;
+    ipv6_h        ipv6;
+    udp_h         outer_udp;
+    sc_headers_t  scion;
+    idint_h       idint;
+    idint_stack_h telemetry_stack;
+    udp_h         inner_udp;
+    timestamp_h   timestamp;
 }
 
 /** Metadata **/
@@ -851,6 +886,16 @@ parser EgParser(packet_in           pkt,
     state scion {
         scion_parser.apply(pkt, hdr.scion, outer_udp_chksum);
         transition select (hdr.scion.common.next_hdr) {
+            sc_proto_t.IDINT : idint;
+            sc_proto_t.UDP   : inner_udp;
+            default          : accept;
+        }
+    }
+
+    state idint {
+        pkt.extract(hdr.idint);
+        pkt.extract(hdr.telemetry_stack, (bit<32>)hdr.idint.length * 32);
+        transition select (hdr.idint.next_hdr) {
             sc_proto_t.UDP : inner_udp;
             default        : accept;
         }
@@ -899,6 +944,8 @@ control EgDeparser(packet_out                      pkt,
         pkt.emit(hdr.ipv6);
         pkt.emit(hdr.outer_udp);
         pkt.emit(hdr.scion);
+        pkt.emit(hdr.idint);
+        pkt.emit(hdr.telemetry_stack);
         pkt.emit(hdr.inner_udp);
         pkt.emit(hdr.timestamp);
     }

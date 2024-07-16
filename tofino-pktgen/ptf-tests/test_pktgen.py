@@ -15,6 +15,7 @@ from controller.ts_header import TimestampHdr
 
 
 PACKET_PATH = "ptf-tests/scion_packet.bin"
+IDINT_PACKET_PATH = "ptf-tests/idint_packet.bin"
 
 def _make_port(pipe: int, port: int) -> int:
     """Make port number from pipe ID and port within the pipe."""
@@ -143,6 +144,93 @@ class TrafficGeneratorTest(BfRuntimeTest):
             ovfl_bytes, ovfl_pkts = self.controller.get_hist_overflow()
             self.assertEqual(sum(packets) + ovfl_pkts, 0)
             self.assertEqual(sum(bytes) + ovfl_bytes, 0)
+
+        finally:
+            logger.info("Cleanup")
+            self.controller.program_tables(self.config, cleanup=True)
+
+
+@group("idint")
+class IdIntTest(BfRuntimeTest):
+    client_id = 0
+    p4_name = "pktgen"
+    config = {
+        "apps": {
+            # Up to 16 applications (0-15)
+            0: {
+                "enabled": True,                 # Enable the application
+                "packet": IDINT_PACKET_PATH,     # Path to file containing packet data
+                "pktgen_port": _make_port(1, 0), # Pktgen port to use (0-7 of each pipe)
+                "timer_nanosec": 1e6,            # Delay after trigger
+                "batch_count": 1,                # Number of batches
+                "packets_per_batch": 1,          # Packets per batch
+                "ibg": 0,                        # Inter-batch gap
+                "ibg_jitter": 0,                 # Inter-batch gap jitter
+                "ipg": 0,                        # Inter-packet gap
+                "ipg_jitter": 0,                 # Inter-packet gap jitter
+                "eg_port_group": 0               # Device egress ports (references eg_port_groups)
+            },
+        },
+        "eg_port_groups": {
+            0: [_make_port(1, 8)]
+        }
+    }
+
+    def setUp(self):
+        BfRuntimeTest.setUp(self, self.client_id, self.p4_name)
+        self.interface.clear_all_tables()
+        self.controller = StatelessTrafficGenerator(self.interface, pipe=1)
+        with open(IDINT_PACKET_PATH, "rb") as file:
+            self.pkt = Ether(file.read(1500))
+
+    def tearDown(self):
+        super().tearDown()
+
+    def runTest(self):
+        logger.info("Program tables")
+        self.controller.program_tables(self.config)
+
+        PKTGEN_HDR_SIZE = 6
+        FCS_SIZE = 4
+
+        try:
+            exp = Mask(self.pkt)
+            exp.set_do_not_care_scapy(UDP, "chksum")
+            exp.set_do_not_care_scapy(TimestampHdr, "Timestamp")
+            logger.info("Trigger generator")
+            self.controller.trigger()
+            verify_packet(self, exp, _make_port(1, 8))
+
+            logger.info("Get TX counters")
+            tx_bytes, tx_pkts = self.controller.get_tx_counters()
+            self.assertEqual(tx_bytes, 1 * (len(self.pkt) + PKTGEN_HDR_SIZE + FCS_SIZE))
+            self.assertEqual(tx_pkts, 1)
+
+            logger.info("Get timestamps")
+            send_packet(self, _make_port(1, 8), self.pkt)
+            time.sleep(0.5)
+            (tx_first, tx_last), (rx_first, rx_last) = self.controller.get_timestamps()
+            self.assertNotEqual(tx_first, -1)
+            self.assertNotEqual(tx_last, -1)
+            self.assertNotEqual(rx_first, -1)
+            self.assertNotEqual(rx_last, -1)
+            self.assertLessEqual((tx_last - tx_first) % 2**48, 1000000000)
+            self.assertEqual(rx_first, rx_last)
+
+            send_packet(self, _make_port(1, 8), self.pkt)
+            time.sleep(0.5)
+            (tx_first, tx_last), (rx_first, rx_last) = self.controller.get_timestamps()
+            self.assertNotEqual(rx_first, rx_last)
+
+            logger.info("Read histogram")
+            for i in range(6):
+                send_packet(self, _make_port(1, 8), self.pkt)
+                time.sleep(0.5) # Tofino model drops packets if rate is too high
+
+            _, bytes, packets = self.controller.get_histogram()
+            ovfl_bytes, ovfl_pkts = self.controller.get_hist_overflow()
+            self.assertEqual(sum(packets) + ovfl_pkts, 8)
+            self.assertEqual(sum(bytes) + ovfl_bytes, 8 * (len(self.pkt) + FCS_SIZE))
 
         finally:
             logger.info("Cleanup")

@@ -27,6 +27,7 @@ ${SDE}/run_p4_tests.sh --arch tf2 -f ptf-tests/test_ports.json -t ptf-tests
 ```
 Test suites (select with `-s <test suite>`):
 - default
+- idint
 - rewrite
 
 ### Command Line Interface
