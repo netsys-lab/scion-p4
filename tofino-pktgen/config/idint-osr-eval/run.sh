@@ -1,13 +1,21 @@
 #!/bin/bash
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-# Run as config/idint-osr-eval/run.sh
+# Run as config/idint-osr-eval/run.sh <experiment>
 
 set -e
 
+if [ $# -ne 1 ]; then
+    echo "Run as: config/idint-osr-eval/run.sh <experiment>"
+    exit 1
+fi
+
+experiment=$1
 input=config/idint-osr-eval/packets
-output=config/idint-osr-eval/results
+output=config/idint-osr-eval/$experiment
 ARGS="--pipe 3 --hist-shift 16"
+
+echo $output
 
 mkdir -p $output
 

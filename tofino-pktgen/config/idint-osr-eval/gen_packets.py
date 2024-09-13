@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 import base64
 import os
-from datetime import datetime
 from typing import List
 
 from controller.ts_header import TimestampHdr
@@ -9,6 +8,7 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from scapy.layers.inet import IP, UDP, Ether
 from scapy.packet import Raw
+from scapy.utils import wrpcap
 from scapy_scion.layers.scion import SCION, HopField, InfoField, SCIONPath
 from scapy_scion.layers.idint import IDINT, StackEntry
 
@@ -24,8 +24,11 @@ def derive_hf_mac_key(key: str) -> str:
     return base64.b64encode(kdf.derive(base64.b64decode(key)))
 
 
-AS_KEY = derive_hf_mac_key("AA920Abnl1HwTppG+v00Hg==")
+# We only need the secret of the AS under test
+AS_KEY = derive_hf_mac_key("fM0MjEYgyHUJgx7/q5ZA+w==")
+# DRKey keys don't matter as we never validate the packets
 IDINT_KEY = 16 * b"\x00"
+# UDP payload size of the generated packets
 PAYLOAD = 1000
 
 
@@ -46,15 +49,15 @@ def create_pkt():
                 InfoField(Flags="C", SegID=0x2ab5),
             ],
             HopFields=[
-                HopField(ExpTime=63, ConsIngress=1, ConsEgress=0),
-                HopField(ExpTime=63, ConsIngress=0, ConsEgress=1),
+                HopField(ExpTime=63, ConsIngress=2, ConsEgress=0),
                 HopField(ExpTime=63, ConsIngress=0, ConsEgress=2),
-                HopField(ExpTime=63, ConsIngress=1, ConsEgress=0),
+                HopField(ExpTime=63, ConsIngress=0, ConsEgress=4),
+                HopField(ExpTime=63, ConsIngress=2, ConsEgress=0),
             ],
         )
     )
     pkt = pkt / UDP() / TimestampHdr()
-    pkt = pkt / Raw(os.urandom(PAYLOAD))
+    pkt = pkt / Raw(os.urandom(PAYLOAD - 4))
     pkt[SCION].Path.init_path(4 * [AS_KEY], [b"ab"])
     pkt[SCION].Path.egress(AS_KEY)
     return pkt
@@ -77,10 +80,10 @@ def create_idint_pkt(instr: List[int], req_default_md: bool, encrypt: bool):
                 InfoField(Flags="C", SegID=0x2ab5),
             ],
             HopFields=[
-                HopField(ExpTime=63, ConsIngress=1, ConsEgress=0),
-                HopField(ExpTime=63, ConsIngress=0, ConsEgress=1),
+                HopField(ExpTime=63, ConsIngress=2, ConsEgress=0),
                 HopField(ExpTime=63, ConsIngress=0, ConsEgress=2),
-                HopField(ExpTime=63, ConsIngress=1, ConsEgress=0),
+                HopField(ExpTime=63, ConsIngress=0, ConsEgress=4),
+                HopField(ExpTime=63, ConsIngress=2, ConsEgress=0),
             ],
         )
     )
@@ -100,7 +103,7 @@ def create_idint_pkt(instr: List[int], req_default_md: bool, encrypt: bool):
         ]
     )
     pkt = pkt / UDP() / TimestampHdr()
-    pkt = pkt / Raw(os.urandom(PAYLOAD))
+    pkt = pkt / Raw(os.urandom(PAYLOAD - 4))
     pkt[SCION].Path.init_path(4 * [AS_KEY], [b"ab"])
     pkt[SCION].Path.egress(AS_KEY)
     pkt[IDINT].verify(keys=2*[IDINT_KEY], update=True)
