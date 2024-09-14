@@ -1,15 +1,14 @@
 #!/usr/bin/python3
 
 import argparse
-import io
 import json
-import tarfile
 from pathlib import Path
-from typing import Any, Dict, Tuple, List
 
 import numpy as np
+import matplotlib
 from matplotlib.figure import Figure
 
+matplotlib.rcParams["pdf.fonttype"] = 42
 
 def load_results(dir: Path):
     res = {}
@@ -28,62 +27,89 @@ def load_results(dir: Path):
 
 
 def calc_pps(data):
-    res = []
-    for rep in data:
-        rx_timedelta = 1e-9 * float((rep["rx_last"] - rep["rx_first"]) % 2**48)
-        res.append(1e-5 * rep["total_rx_pkts"] / rx_timedelta)
-    return np.array(res)
+    return 1e-5 * np.array([rep["rx_pkt_rate"] for rep in data])
 
 
-def plot_pps(data):
+def plot_pps(data_cgo, data_go):
     fig = Figure(figsize=(7, 4), dpi=96)
     ax = fig.add_subplot()
-    width = 0.4
+    width = 0.2
+    lowerQuantiale = 0.2
+    upperQuantiale = 0.8
 
-    base = calc_pps(data["baseline"])
-    base_min = np.min(base)
+    base = calc_pps(data_cgo["baseline"])
+    base_min = np.quantile(base, lowerQuantiale)
     base_avg = np.mean(base)
-    base_max = np.max(base)
+    base_max = np.quantile(base, upperQuantiale)
 
-    idint_min = np.zeros(5)
-    idint_avg = np.zeros(5)
-    idint_max = np.zeros(5)
-    idint_enc_min = np.zeros(5)
-    idint_enc_avg = np.zeros(5)
-    idint_enc_max = np.zeros(5)
+    cgo_min = np.zeros(5)
+    cgo_avg = np.zeros(5)
+    cgo_max = np.zeros(5)
+    cgo_enc_min = np.zeros(5)
+    cgo_enc_avg = np.zeros(5)
+    cgo_enc_max = np.zeros(5)
+    go_min = np.zeros(5)
+    go_avg = np.zeros(5)
+    go_max = np.zeros(5)
+    go_enc_min = np.zeros(5)
+    go_enc_avg = np.zeros(5)
+    go_enc_max = np.zeros(5)
     for i, s in enumerate([8, 16, 24, 32, 42]):
-        idint = calc_pps(data["idint"][s])
-        idint_min[i] = np.min(idint)
-        idint_avg[i] = np.mean(idint)
-        idint_max[i] = np.max(idint)
-        idint_enc = calc_pps(data["idint_enc"][s])
-        idint_enc_min[i] = np.min(idint_enc)
-        idint_enc_avg[i] = np.mean(idint_enc)
-        idint_enc_max[i] = np.max(idint_enc)
+        cgo = calc_pps(data_cgo["idint"][s])
+        cgo_min[i] = np.quantile(cgo, lowerQuantiale)
+        cgo_avg[i] = np.mean(cgo)
+        cgo_max[i] = np.quantile(cgo, upperQuantiale)
+        cgo_enc = calc_pps(data_cgo["idint_enc"][s])
+        cgo_enc_min[i] = np.quantile(cgo_enc, lowerQuantiale)
+        cgo_enc_avg[i] = np.mean(cgo_enc)
+        cgo_enc_max[i] = np.quantile(cgo_enc, upperQuantiale)
+        go = calc_pps(data_go["idint"][s])
+        go_min[i] = np.quantile(go, lowerQuantiale)
+        go_avg[i] = np.mean(go)
+        go_max[i] = np.quantile(go, upperQuantiale)
+        go_enc = calc_pps(data_go["idint_enc"][s])
+        go_enc_min[i] = np.quantile(go_enc, lowerQuantiale)
+        go_enc_avg[i] = np.mean(go_enc)
+        go_enc_max[i] = np.quantile(go_enc, upperQuantiale)
 
     print("Base:", base_avg)
-    print("IDINT:", idint_avg)
-    print("Encrypted:", idint_enc_avg)
+    print("IDINT (CGo)    :", -100 * (1 - (cgo_avg / base_avg)))
+    print("Encrypted (CGo):", -100 * (1 - (cgo_enc_avg / base_avg)))
+    print("IDINT (Go)     :", -100 * (1 - (go_avg / base_avg)))
+    print("Encrypted (Go) :", -100 * (1 - (go_enc_avg / base_avg)))
 
-    ax.bar([0], [base_avg], width, align="center", capsize=5, color="tab:blue", hatch="x",
-        yerr=[[base_avg-base_min], [base_max-base_avg]], label="No INT")
+    ax.bar([0.3], [base_avg], width, align="center", capsize=5, color="tab:blue", hatch="xx",
+        yerr=[[base_avg-base_min], [base_max-base_avg]])
 
     x = np.array([1, 2, 3, 4, 5])
-    ax.bar(x - width, idint_avg, width, align="edge", capsize=5, color="tab:orange", hatch="/",
-        yerr=[idint_avg-idint_min, idint_max-idint_avg], label="INT")
-    ax.bar(x, idint_enc_avg, width, align="edge", capsize=5, color="tab:red", hatch="\\",
-        yerr=[idint_enc_avg-idint_enc_min, idint_enc_max-idint_enc_avg], label="Encrypted INT")
 
-    ax.set_xticks(range(6), [
-        "Disabled",
+    ax.bar(x - 2*width, cgo_avg, width, align="edge", capsize=5, color="red", hatch=".",
+        yerr=[cgo_avg-cgo_min, cgo_max-cgo_avg], label="Auth. ID-INT (cgo)")
+    ax.bar(x - width, cgo_enc_avg, width, align="edge", capsize=5, color="tab:orange", hatch="o",
+        yerr=[cgo_enc_avg-cgo_enc_min, cgo_enc_max-cgo_enc_avg], label="Encrypted ID-INT (cgo)")
+
+    ax.bar(x, go_avg, width, align="edge", capsize=5, color="seagreen", hatch="/",
+        yerr=[go_avg-go_min, go_max-go_avg], label="Auth. ID-INT")
+    ax.bar(x + width, go_enc_avg, width, align="edge", capsize=5, color="mediumseagreen", hatch="\\",
+        yerr=[go_enc_avg-go_enc_min, go_enc_max-go_enc_avg], label="Encrypted ID-INT")
+
+    ax.set_xlim(0, 5.6)
+    ax.hlines([base_avg], 0, 6, color="black", linestyle="dotted")
+
+    ax.set_xticks([0.3, 1, 2, 3, 4, 5], [
+        "No ID-INT",
         "8 byte",
         "16 byte",
         "24 byte",
         "32 byte",
         "42 byte"
     ])
+    ax.set_yticks(
+        [0, 0.5, 1, 1.5, 2, 2.5, base_avg, 3],
+        ["0", "0.5", "1", "1.5", "2", "2.5", f"{base_avg:.2}", "3"]
+    )
     ax.set_ylabel("1e5 packets/s")
-    ax.legend(loc="upper right", ncol=3)
+    ax.legend(loc="lower right", ncol=2)
 
     return fig
 
@@ -96,8 +122,9 @@ def main():
         help="File name extension / format of the generated figures")
     args = parser.parse_args()
 
-    data = load_results(args.input)
-    fig = plot_pps(data)
+    cgo = load_results(args.input / "cgo")
+    go = load_results(args.input / "go")
+    fig = plot_pps(cgo, go)
     fig.savefig(args.output / f"idint-osr-pps.{args.format}", bbox_inches="tight")
 
 
