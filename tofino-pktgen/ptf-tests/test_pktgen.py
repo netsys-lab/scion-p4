@@ -3,8 +3,13 @@ import bfrt_grpc.client as gc
 import ptf
 import time
 import scapy
+
 from ptf.testutils import group
+from scapy.layers.l2 import ARP
 from scapy.layers.inet import Ether, UDP
+from scapy.layers.inet6 import (
+    IPv6, ICMPv6ND_NS, ICMPv6ND_NA, ICMPv6NDOptSrcLLAddr, ICMPv6NDOptDstLLAddr
+)
 from scapy_scion.layers.scion import SCION
 from bfruntime_client_base_tests import BaseTest, BfRuntimeTest
 from p4testutils.misc_utils import *
@@ -144,6 +149,69 @@ class TrafficGeneratorTest(BfRuntimeTest):
             ovfl_bytes, ovfl_pkts = self.controller.get_hist_overflow()
             self.assertEqual(sum(packets) + ovfl_pkts, 0)
             self.assertEqual(sum(bytes) + ovfl_bytes, 0)
+
+        finally:
+            logger.info("Cleanup")
+            self.controller.program_tables(self.config, cleanup=True)
+
+
+@group("nd")
+class NeighborDiscoveryTest(BfRuntimeTest):
+    client_id = 0
+    p4_name = "pktgen"
+    config = {
+        "apps": {
+        },
+        "eg_port_groups" : {
+        },
+        "neighbors" : {
+            "ipv4": {
+                "10.64.0.2": "02:f3:f9:0f:86:a2",
+                "10.64.1.2": "9e:df:a5:5c:dc:0b"
+            },
+            "ipv6": {
+                "fd00::2": "02:f3:f9:0f:86:a2",
+                "fd01::2": "9e:df:a5:5c:dc:0b"
+            }
+        }
+    }
+
+    def setUp(self):
+        BfRuntimeTest.setUp(self, self.client_id, self.p4_name)
+        self.interface.clear_all_tables()
+        self.controller = StatelessTrafficGenerator(self.interface, pipe=1)
+
+    def tearDown(self):
+        super().tearDown()
+
+    def runTest(self):
+        logger.info("Program tables")
+        self.controller.program_tables(self.config)
+
+        try:
+            logger.info("ARP Request")
+            arp_req = Ether(dst="ff:ff:ff:ff:ff:ff", src="da:60:3f:cb:8e:82")
+            arp_req /= ARP(op="who-has",
+                hwsrc="da:60:3f:cb:8e:82", psrc="10.64.0.1", pdst="10.64.0.2")
+            arp_resp = Ether(dst=arp_req.src, src="02:f3:f9:0f:86:a2")
+            arp_resp /= ARP(op="is-at",
+                hwsrc="02:f3:f9:0f:86:a2", psrc="10.64.0.2",
+                hwdst="da:60:3f:cb:8e:82", pdst="10.64.0.1")
+            arp_resp = Ether(bytes(arp_resp))
+            send_packet(self, _make_port(1, 8), arp_req)
+            verify_packet(self, arp_resp, _make_port(1, 8))
+
+            logger.info("Neighbor Solicitation")
+            sol = Ether(dst="ff:ff:ff:ff:ff:ff", src="da:60:3f:cb:8e:82")
+            sol /= IPv6(dst="ff02::1", src="fd00::1")
+            sol /= ICMPv6ND_NS(tgt="fd00::2") / ICMPv6NDOptSrcLLAddr(lladdr="da:60:3f:cb:8e:82")
+            adv = Ether(dst="da:60:3f:cb:8e:82", src="02:f3:f9:0f:86:a2")
+            adv /= IPv6(dst="fd00::1", src="fd00::2")
+            adv /= ICMPv6ND_NA(R=0, S=1, O=1, tgt="fd00::2")
+            adv /= ICMPv6NDOptDstLLAddr(lladdr="02:f3:f9:0f:86:a2")
+            adv = Ether(bytes(adv))
+            send_packet(self, _make_port(1, 8), sol)
+            verify_packet(self, adv, _make_port(1, 8))
 
         finally:
             logger.info("Cleanup")

@@ -27,6 +27,7 @@ ${SDE}/run_p4_tests.sh --arch tf2 -f ptf-tests/test_ports.json -t ptf-tests
 ```
 Test suites (select with `-s <test suite>`):
 - default
+- nd
 - idint
 - rewrite
 
@@ -37,7 +38,7 @@ controller/pktgen-cli example_config.yaml
 
 ```
 usage: pktgen-cli [-h] [--grpc_addr GRPC_ADDR] [--client_id CLIENT_ID] [--pipe PIPE] [--clear] [--repeat REPEAT] [--hist-bits HIST_BITS]
-                  [--hist-shift HIST_SHIFT] [--out FILE] [--lat-out FILE]
+                  [--hist-shift HIST_SHIFT] [--packet PACKET] [--out FILE] [--lat-out FILE]
                   config
 
 positional arguments:
@@ -56,6 +57,7 @@ options:
                         2**hist_bits is the number of histogram bins (max 10 bit) (default: 8)
   --hist-shift HIST_SHIFT
                         Defines the size of the bins in powers of two (default: 6)
+  --packet PACKET       Override all packet files with the given path (default: None)
   --out FILE            Save report in JSON format to FILE (default: None)
   --lat-out FILE        Save captured packet latencies as Numpy binary file to FILE (default: None)
 ```

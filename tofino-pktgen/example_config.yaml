@@ -17,3 +17,10 @@ apps:
 # Port groups
 eg_port_groups:
     0: [1]  # Port 1 of each pipe is a default loopback port on Tofino 2
+
+# IP addresses for which to respond to ARP requests and neighbor solicitations
+neighbors:
+    ipv4:
+        "10.64.0.2": "02:f3:f9:0f:86:a2"
+    ipv6:
+        "fd00::2": "02:f3:f9:0f:86:a2"

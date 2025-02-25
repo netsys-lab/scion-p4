@@ -73,6 +73,8 @@ class StatelessTrafficGenerator:
         self.t_pre_node          = self.bfrt_info.table_get("$pre.node")
         self.t_src_ports         = self.bfrt_info.table_get("IgParser.src_ports")
         self.t_timer_app_ids     = self.bfrt_info.table_get("IgParser.timer_app_ids")
+        self.t_arp_reply         = self.bfrt_info.table_get("tab_arp_reply")
+        self.t_ipv6_nd           = self.bfrt_info.table_get("tab_ipv6_nd")
         self.t_forward           = self.bfrt_info.table_get("tab_forward")
         self.t_mod_ports         = self.bfrt_info.table_get("tab_mod_underlay_ports")
         self.t_mod_flow_id       = self.bfrt_info.table_get("tab_mod_flow_id")
@@ -89,6 +91,11 @@ class StatelessTrafficGenerator:
         self.t_lat_array = 16 * [None]
         for i in range(16):
             self.t_lat_array[i] = self.bfrt_info.table_get(f"reg_lat_array{i}")
+        # Custom API Annotations
+        self.t_arp_reply.info.key_field_annotation_add("hdr.arp.target_proto_addr", "ipv4")
+        self.t_arp_reply.info.data_field_annotation_add("hw_addr", "arp_reply", "mac")
+        self.t_ipv6_nd.info.key_field_annotation_add("hdr.icmp6.target", "ipv6")
+        self.t_ipv6_nd.info.data_field_annotation_add("hw_addr", "advertise", "mac")
 
     def program_tables(self, config, cleanup=False):
         """Prepare the dataplane by programming the P4 and device tables.
@@ -133,11 +140,17 @@ class StatelessTrafficGenerator:
                 packets[app_id] = (offset, pkt)
                 offset += (len(pkt) + 8) & ~0x0f # offsets must be aligned
 
-        self._program_parser_value_sets(self.target, pktgen_ports, enabled_apps, cleanup)
-        self._program_pre(self.target, mcast, cleanup)
-        self._program_forwarding_table(self.target, unicast, mcast, cleanup)
-        self._program_port_mod(self.target, config.get("port_map", []), cleanup)
-        self._program_flow_id_mod(self.target, config.get("flow_map", []), cleanup)
+        if "neighbors" in config:
+            neigh = config["neighbors"]
+            self._program_arp(self.target, neigh.get("ipv4", {}), cleanup)
+            self._program_nd(self.target, neigh.get("ipv6", {}), cleanup)
+
+        if len(enabled_apps) > 0:
+            self._program_parser_value_sets(self.target, pktgen_ports, enabled_apps, cleanup)
+            self._program_pre(self.target, mcast, cleanup)
+            self._program_forwarding_table(self.target, unicast, mcast, cleanup)
+            self._program_port_mod(self.target, config.get("port_map", []), cleanup)
+            self._program_flow_id_mod(self.target, config.get("flow_map", []), cleanup)
         if not cleanup:
             self._load_packet_buffer(self.target, packets)
             self._program_port_cfg(self.target, pktgen_ports)
@@ -148,6 +161,44 @@ class StatelessTrafficGenerator:
         if not cleanup:
             self._program_registers(self.target)
             self.reset_timestamps()
+
+    def _program_arp(self, target, neighbors, cleanup):
+        if len(neighbors) == 0:
+            return
+        logger.info("Program ARP replies")
+        keys = [self.t_arp_reply.make_key([
+            gc.KeyTuple("hdr.arp.hw_type", 1),
+            gc.KeyTuple("hdr.arp.proto", 0x0800),
+            gc.KeyTuple("hdr.arp.hw_len", 6),
+            gc.KeyTuple("hdr.arp.proto_len", 4),
+            gc.KeyTuple("hdr.arp.operation", 1),
+            gc.KeyTuple("hdr.arp.target_proto_addr", ip)
+        ]) for ip in neighbors.keys()]
+        data = [self.t_arp_reply.make_data([
+            gc.DataTuple("hw_addr", val=mac)
+        ], "arp_reply") for mac in neighbors.values()]
+        if not cleanup:
+            self.t_arp_reply.entry_add(target, keys, data)
+        else:
+            self.t_arp_reply.entry_del(target, keys)
+
+    def _program_nd(self, target, neighbors, cleanup):
+        if len(neighbors) == 0:
+            return
+        logger.info("Program neighbor advertisements")
+        keys = [self.t_ipv6_nd.make_key([
+            gc.KeyTuple("hdr.icmp6.type", 135),
+            gc.KeyTuple("hdr.icmp6.code", 0),
+            gc.KeyTuple("hdr.icmp6.opt_type", 1),
+            gc.KeyTuple("hdr.icmp6.target", ip)
+        ]) for ip in neighbors.keys()]
+        data = [self.t_ipv6_nd.make_data([
+            gc.DataTuple("hw_addr", val=mac)
+        ], "advertise") for mac in neighbors.values()]
+        if not cleanup:
+            self.t_ipv6_nd.entry_add(target, keys, data)
+        else:
+            self.t_ipv6_nd.entry_del(target, keys)
 
     def _program_parser_value_sets(self, target, ports, apps, cleanup):
         logger.info("Program parser value sets")

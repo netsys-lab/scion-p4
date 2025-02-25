@@ -260,7 +260,7 @@ def parse_args():
     parser.add_argument("--hist-shift", type=int, default=6,
         help="Defines the size of the bins in powers of two")
     parser.add_argument("--packet", type=str, default=None,
-        help="Override the packet file used by all apps with the given path")
+        help="Override all packet files with the given path")
     parser.add_argument("--out", default=None, metavar="FILE",
         help="Save report in JSON format to FILE")
     parser.add_argument("--lat-out", default=None, metavar="FILE",

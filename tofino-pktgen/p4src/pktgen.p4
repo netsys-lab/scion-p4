@@ -15,11 +15,30 @@ type bit<48> mac_addr_t;
 
 enum bit<16> ether_type_t {
     IPV4   = 0x0800,
+    ARP    = 0x0806,
     IPV6   = 0x86DD
 }
 
 enum bit<8> ip_proto_t {
-    UDP = 0x11
+    ICMP     = 1,
+    TCP      = 6,
+    UDP      = 17,
+    IPv6Frag = 44,
+    ICMPv6   = 58
+}
+
+enum bit<8> icmp6_type {
+    DestUnreach   = 1,
+    PacketTooBig  = 2,
+    TimeExceeded  = 3,
+    ParamProblem  = 4,
+    EchoRequest   = 128,
+    EchoReply     = 129,
+    RouterSolicit = 133,
+    RouterAdvert  = 134,
+    NeighSolicit  = 135,
+    NeighAdvert   = 136,
+    Redirect      = 137
 }
 
 /////////////
@@ -30,6 +49,18 @@ header ethernet_h {
     mac_addr_t   dst;
     mac_addr_t   src;
     ether_type_t etype;
+}
+
+header arp_h {
+    bit<16>    hw_type;
+    bit<16>    proto;
+    bit<8>     hw_len;
+    bit<8>     proto_len;
+    bit<16>    operation;
+    mac_addr_t sender_hw_addr;
+    bit<32>    sender_proto_addr;
+    mac_addr_t target_hw_addr;
+    bit<32>    target_proto_addr;
 }
 
 header ipv4_h {
@@ -56,6 +87,21 @@ header ipv6_h {
     bit<8>     hop_limit;
     bit<128>   src;
     bit<128>   dst;
+}
+
+header icmp6_h {
+    icmp6_type type;
+    bit<8>     code;
+    bit<16>    chksum;
+    bit<1>     router;
+    bit<1>     solicited;
+    bit<1>     override;
+    bit<29>    reserved;
+    bit<128>   target;
+    // source/target link-layer address option
+    bit<8>     opt_type;
+    bit<8>     opt_length;
+    mac_addr_t target_ll;
 }
 
 header udp_h {
@@ -509,8 +555,10 @@ header timestamp_h {
 struct ingress_headers_t {
     pktgen_timer_header_t pktgen_timer;
     ethernet_h            ethernet;
+    arp_h                 arp;
     ipv4_h                ipv4;
     ipv6_h                ipv6;
+    icmp6_h               icmp6;
     udp_h                 outer_udp;
     sc_headers_t          scion;
     idint_h               idint;
@@ -563,9 +611,15 @@ parser IgParser(packet_in            pkt,
         pkt.extract(hdr.ethernet);
         transition select(hdr.ethernet.etype) {
             ether_type_t.IPV4 : ipv4;
+            ether_type_t.ARP  : arp;
             ether_type_t.IPV6 : ipv6;
             default           : accept;
         }
+    }
+
+    state arp {
+        pkt.extract(hdr.arp);
+        transition accept;
     }
 
     state ipv4 {
@@ -575,7 +629,15 @@ parser IgParser(packet_in            pkt,
 
     state ipv6 {
         pkt.extract(hdr.ipv6);
-        transition outer_udp;
+        transition select (hdr.ipv6.next_hdr) {
+            ip_proto_t.UDP    : outer_udp;
+            ip_proto_t.ICMPv6 : icmp6;
+        }
+    }
+
+    state icmp6 {
+        pkt.extract(hdr.icmp6);
+        transition accept;
     }
 
     state outer_udp {
@@ -638,9 +700,31 @@ control IgDeparser(packet_out                       pkt,
     in    ingress_metadata_t                        meta,
     in    ingress_intrinsic_metadata_for_deparser_t ig_dprsr_md)
 {
+    Checksum() icmp_chksum;
     Checksum() outer_udp_chksum;
 
     apply {
+        // ICMPv6 Checksum
+        if (hdr.icmp6.isValid()) {
+            hdr.icmp6.chksum = icmp_chksum.update({
+                hdr.ipv6.src,
+                hdr.ipv6.dst,
+                hdr.ipv6.payload_len,
+                8w0,
+                hdr.ipv6.next_hdr,
+                hdr.icmp6.type,
+                hdr.icmp6.code,
+                hdr.icmp6.router,
+                hdr.icmp6.solicited,
+                hdr.icmp6.override,
+                hdr.icmp6.reserved,
+                hdr.icmp6.target,
+                hdr.icmp6.opt_type,
+                hdr.icmp6.opt_length,
+                hdr.icmp6.target_ll
+            });
+        }
+
         // Outer UDP checksum
         if (hdr.outer_udp.isValid()) {
             hdr.outer_udp.chksum = outer_udp_chksum.update({
@@ -656,7 +740,9 @@ control IgDeparser(packet_out                       pkt,
 
         pkt.emit(hdr.ethernet);
         pkt.emit(hdr.ipv4);
+        pkt.emit(hdr.arp);
         pkt.emit(hdr.ipv6);
+        pkt.emit(hdr.icmp6);
         pkt.emit(hdr.outer_udp);
         pkt.emit(hdr.scion);
         pkt.emit(hdr.idint);
@@ -679,6 +765,83 @@ control Ingress(
 #ifndef SINK_IN_EGRESS
     Sink() sink;
 #endif
+
+    // === ARP Reply Table ===
+    // Responds to ARP requests in order to properly simulate the presence of
+    // another device generating the traffic.
+
+    action drop() {
+        ig_dprsr_md.drop_ctl = ig_dprsr_md.drop_ctl | 1;
+    }
+
+    action arp_reply(mac_addr_t hw_addr) {
+        hdr.ethernet.dst = hdr.ethernet.src;
+        hdr.ethernet.src = hw_addr;
+
+        hdr.arp.operation = 2;
+        hdr.arp.sender_hw_addr = hw_addr;
+        hdr.arp.target_hw_addr = hdr.ethernet.dst;
+        bit<32> sender;
+        sender = hdr.arp.sender_proto_addr;
+        hdr.arp.sender_proto_addr = hdr.arp.target_proto_addr;
+        hdr.arp.target_proto_addr = sender;
+
+        ig_tm_md.ucast_egress_port = ig_intr_md.ingress_port;
+        ig_tm_md.bypass_egress = 1;
+    }
+
+    table tab_arp_reply {
+        key = {
+            hdr.arp.hw_type           : exact;
+            hdr.arp.proto             : exact;
+            hdr.arp.hw_len            : exact;
+            hdr.arp.proto_len         : exact;
+            hdr.arp.operation         : exact;
+            hdr.arp.target_proto_addr : exact;
+        }
+        actions = {
+            drop;
+            arp_reply;
+        }
+        const default_action = drop();
+        size = 256;
+    }
+
+    // === IPv6 ND Table ===
+    // Respond to ICMPv6 neighbor solicitation messages.
+
+    action advertise(mac_addr_t hw_addr) {
+        hdr.ethernet.dst = hdr.ethernet.src;
+        hdr.ethernet.src = hw_addr;
+
+        hdr.ipv6.dst = hdr.ipv6.src;
+        hdr.ipv6.src = hdr.icmp6.target;
+
+        hdr.icmp6.type = icmp6_type.NeighAdvert;
+        hdr.icmp6.router = 0;
+        hdr.icmp6.solicited = 1;
+        hdr.icmp6.override = 1;
+        hdr.icmp6.opt_type = 2;
+        hdr.icmp6.target_ll = hw_addr;
+
+        ig_tm_md.ucast_egress_port = ig_intr_md.ingress_port;
+        ig_tm_md.bypass_egress = 1;
+    }
+
+    table tab_ipv6_nd {
+        key = {
+            hdr.icmp6.type     : exact;
+            hdr.icmp6.code     : exact;
+            hdr.icmp6.opt_type : exact;
+            hdr.icmp6.target   : exact;
+        }
+        actions = {
+            drop;
+            advertise;
+        }
+        const default_action = drop();
+        size = 256;
+    }
 
     // === Forwarding table ===
     // Forward packets from pktgen to single egress port or multicast group.
@@ -777,6 +940,14 @@ control Ingress(
 
     // === Main ===
     apply {
+        if (hdr.arp.isValid()) {
+            // Respond to ARP requests
+            tab_arp_reply.apply();
+        }
+        if (hdr.icmp6.isValid()) {
+            // Respond to neighbor solicitations
+            tab_ipv6_nd.apply();
+        }
         if (hdr.pktgen_timer.isValid()) {
             // TX packet
             if (hdr.timestamp.isValid()) {
